@@ -2869,7 +2869,7 @@ function renderDay() {
     h += `<option value="${mod.id}">${mod.emoji} ${mod.name}</option>`;
   });
   h += `</select>`;
-  h += `<input class="day-add-input" id="dayAddInput" placeholder="输入待办内容，回车添加…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTodoInDay();}"/>`;
+  h += `<input class="day-add-input" id="dayAddInput" placeholder="输入待办内容，回车添加…" onkeydown="if(event.key==='Enter'&&!event.isComposing&&!_isComposing){event.preventDefault();addTodoInDay();}"/>`;
   h += `<button class="day-add-submit" onclick="addTodoInDay()">添加</button>`;
   h += `</div>`;
 
@@ -3183,9 +3183,16 @@ function disableSlotEdit(el, todoId) {
   if(item) item.draggable = true;
 }
 
+// --- IME composing state tracking for contenteditable fields ---
+let _isComposing = false;
+document.addEventListener('compositionstart', function() { _isComposing = true; });
+document.addEventListener('compositionend', function() { _isComposing = false; });
+
 // --- Enter key = confirm for all todo contenteditable fields ---
 document.addEventListener('keydown', function(e) {
   if(e.key !== 'Enter') return;
+  // Skip if IME is composing (e.g. Chinese IME pressing Enter to commit pinyin as English)
+  if(e.isComposing || _isComposing) return;
   const el = e.target;
   // Only intercept on todo text fields (row-text / ts-item-text), not on textareas (info notes)
   if(el.matches('.row-text, .ts-item-text')) {
@@ -3253,6 +3260,21 @@ function switchTodoModule(todoId, tagEl, event) {
 }
 
 function editTodoText(id,text) {
+  // If IME is still composing, defer save until compositionend
+  if(_isComposing) {
+    const handler = function() {
+      document.removeEventListener('compositionend', handler);
+      // Re-read text from DOM since composition may have changed it
+      const el = document.querySelector(`[data-id="${id}"] .row-text`) || document.querySelector(`.ts-item[data-id="${id}"] .ts-item-text`);
+      const finalText = el ? el.textContent.trim() : text.trim();
+      _doEditTodoText(id, finalText);
+    };
+    document.addEventListener('compositionend', handler);
+    return;
+  }
+  _doEditTodoText(id, text);
+}
+function _doEditTodoText(id, text) {
   const r=findTodo(id);
   if(!r) return;
   const trimmed = text.trim();
