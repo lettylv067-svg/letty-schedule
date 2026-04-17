@@ -2313,7 +2313,7 @@ function previewSelectedVersion() {
 
   // Re-render
   restoreUidCounter();
-  normalizeInfoWeeks();
+  normalizeInfoWeeks(); normalizeTodoWeeks();
   if(currentView === 'week') renderWeek(); else renderDay();
 
   toast('👁️ 已进入版本预览模式（只读，差异已标注）');
@@ -2339,7 +2339,7 @@ function exitVersionPreview() {
 
   // Re-render
   restoreUidCounter();
-  normalizeInfoWeeks();
+  normalizeInfoWeeks(); normalizeTodoWeeks();
   if(currentView === 'week') renderWeek(); else renderDay();
 
   toast('✅ 已退出版本预览');
@@ -2367,7 +2367,7 @@ function restoreFromPreview() {
 
   // Save and sync
   restoreUidCounter();
-  normalizeInfoWeeks();
+  normalizeInfoWeeks(); normalizeTodoWeeks();
   deduplicateTodos();
   saveState();
   if(currentView === 'week') renderWeek(); else renderDay();
@@ -2395,7 +2395,7 @@ async function restoreSelectedVersion() {
 
   // Save and sync
   restoreUidCounter();
-  normalizeInfoWeeks();
+  normalizeInfoWeeks(); normalizeTodoWeeks();
   deduplicateTodos();
   saveState();
   if(currentView === 'week') renderWeek(); else renderDay();
@@ -2663,6 +2663,12 @@ function renderWeek() {
           if(itemDate < mon) return true;
         }
         return false;
+      }
+      // No date: check week field; if no week field, default to current week (weekOffset===0)
+      if(t.week) {
+        const todoMon = fmtDate(getMonday(dateToObj(t.week)));
+        const viewMon = fmtDate(getCurrentWeekMonday());
+        return todoMon === viewMon;
       }
       return weekOffset === 0;
     });
@@ -3290,6 +3296,7 @@ function tryAutoDetectDate(todo) {
   if(detected && detected !== todo.date) {
     todo.date = detected;
     todo.autoDate = true;
+    todo.week = fmtDate(getMonday(dateToObj(detected)));
 
     const normalized = normalizeRelativeTimeInText(todo.text, detected);
     if(normalized !== todo.text) {
@@ -3312,12 +3319,9 @@ function addTodo(modId) {
   const mod=findMod(modId);
   if(!mod) return;
   const newId = uid();
-  // If viewing a different week, default date to that week's Monday so the todo shows up there
-  let defaultDate = '';
-  if(weekOffset !== 0) {
-    defaultDate = fmtDate(getCurrentWeekMonday());
-  }
-  mod.todos.push({id:newId, text:'新待办事项', status:'pending', note:'', date:defaultDate});
+  // Mark which week this todo belongs to (same pattern as info.week)
+  const weekMonday = fmtDate(getCurrentWeekMonday());
+  mod.todos.push({id:newId, text:'新待办事项', status:'pending', note:'', date:'', week:weekMonday});
   saveState(); renderWeek();
   setTimeout(()=>{
     const el = document.querySelector(`[data-id="${newId}"] .row-text`);
@@ -3539,6 +3543,7 @@ function assignDateDay(todoId, dateStr) {
   const r = findTodo(todoId);
   if(!r) return;
   r.todo.date = dateStr;
+  if(dateStr) { r.todo.week = fmtDate(getMonday(dateToObj(dateStr))); }
   if(!dateStr) { r.todo.autoDate = false; }
   saveState();
   closeDatePicker();
@@ -3556,6 +3561,7 @@ function assignDate(todoId, dateStr) {
   const r = findTodo(todoId);
   if(!r) return;
   r.todo.date = dateStr;
+  if(dateStr) { r.todo.week = fmtDate(getMonday(dateToObj(dateStr))); }
   if(!dateStr) { r.todo.autoDate = false; }
   saveState();
   closeDatePicker();
@@ -3810,6 +3816,22 @@ function normalizeInfoWeeks() {
   });
 }
 
+// 补全 todo 的 week 字段（旧数据兼容）
+function normalizeTodoWeeks() {
+  MODULES.forEach(mod => {
+    mod.todos.forEach(t => {
+      if(!t.week) {
+        // If todo has a date, derive week from date; otherwise default to current week
+        if(t.date) {
+          t.week = fmtDate(getMonday(dateToObj(t.date)));
+        } else {
+          t.week = fmtDate(getMonday(NOW));
+        }
+      }
+    });
+  });
+}
+
 function deduplicateTodos() {
   const seenTodoIds = new Set();
   MODULES.forEach(mod => {
@@ -3892,7 +3914,7 @@ async function bootAppData() {
   if(result.ok && result.updated) {
     // Got cloud data — use it
     restoreUidCounter();
-    normalizeInfoWeeks();
+    normalizeInfoWeeks(); normalizeTodoWeeks();
     deduplicateTodos();
     let autoFixed = autoDetectAllDates();
     if(autoFixed > 0) {
@@ -3906,7 +3928,7 @@ async function bootAppData() {
   } else if(result.ok && !result.updated) {
     // Cloud exists but local is same or newer — load from localStorage
     if(loadState()) {
-      normalizeInfoWeeks(); deduplicateTodos(); autoDetectAllDates();
+      normalizeInfoWeeks(); normalizeTodoWeeks(); deduplicateTodos(); autoDetectAllDates();
       if(currentView === 'week') renderWeek(); else renderDay();
     }
     _cloudReady = true;
@@ -3914,7 +3936,7 @@ async function bootAppData() {
   } else {
     // Cloud not available — fallback to localStorage (offline mode)
     if(loadState()) {
-      normalizeInfoWeeks(); deduplicateTodos(); autoDetectAllDates();
+      normalizeInfoWeeks(); normalizeTodoWeeks(); deduplicateTodos(); autoDetectAllDates();
       if(currentView === 'week') renderWeek(); else renderDay();
       console.log('📴 Using localStorage fallback (offline mode)');
     }
@@ -3953,7 +3975,7 @@ document.addEventListener('visibilitychange', async () => {
     if(result.ok && result.updated) {
       // Cloud has newer data — refresh the page
       restoreUidCounter();
-      normalizeInfoWeeks();
+      normalizeInfoWeeks(); normalizeTodoWeeks();
       deduplicateTodos();
       autoDetectAllDates();
       document.getElementById('weekLabel').textContent = getWeekLabel();
