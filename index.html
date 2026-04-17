@@ -792,6 +792,15 @@
   .row.todo.draggable-todo:active { cursor: grabbing; }
   .row.todo.dragging { opacity: 0.4; }
 
+  /* Sort drag indicator */
+  .sort-indicator {
+    height: 2px; background: var(--primary); border-radius: 1px;
+    margin: 0 16px; pointer-events: none;
+    animation: fadeIn .15s ease;
+  }
+  .todo-sort-zone { min-height: 4px; }
+  .todo-sort-zone.sort-drag-over { background: rgba(0,122,255,0.03); border-radius: 8px; }
+
   /* ========== ANIMATIONS ========== */
   .fade-in { animation: fadeIn .35s var(--trans-smooth); }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -2555,6 +2564,31 @@ function importData(evt) {
 function toast(msg) { const e=document.getElementById('toast');e.textContent=msg;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2200); }
 function findMod(modId) { return MODULES.find(m=>m.id===modId); }
 function findTodo(todoId) { for(const m of MODULES) { const t=m.todos.find(x=>x.id===todoId); if(t) return {mod:m,todo:t}; } return null; }
+
+// Sort todos:
+// - If any todo has sortIndex (user manually reordered) → sort by sortIndex only
+// - Otherwise → dated items by date ASC (same date → original order), undated last
+function sortTodos(todos) {
+  const hasManualSort = todos.some(t => typeof t.sortIndex === 'number');
+  if(hasManualSort) {
+    return [...todos].sort((a, b) => {
+      const sa = typeof a.sortIndex === 'number' ? a.sortIndex : 9999;
+      const sb = typeof b.sortIndex === 'number' ? b.sortIndex : 9999;
+      if(sa !== sb) return sa - sb;
+      return todos.indexOf(a) - todos.indexOf(b);
+    });
+  }
+  return [...todos].sort((a, b) => {
+    const da = a.date || '', db = b.date || '';
+    if(da && db) {
+      if(da !== db) return da.localeCompare(db);
+      return todos.indexOf(a) - todos.indexOf(b);
+    }
+    if(da && !db) return -1;
+    if(!da && db) return 1;
+    return todos.indexOf(a) - todos.indexOf(b);
+  });
+}
 function findInfo(infoId) { for(const m of MODULES) { const i=m.infos.find(x=>x.id===infoId); if(i) return {mod:m,info:i}; } return null; }
 function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
 
@@ -2920,7 +2954,7 @@ function renderWeek() {
       return weekOffset === 0;
     });
 
-    const notDone = relevantTodos.filter(t=>t.status!=='done');
+    const notDone = sortTodos(relevantTodos.filter(t=>t.status!=='done'));
     const done = relevantTodos.filter(t=>t.status==='done');
 
     const weekInfos = mod.infos.filter(i => infoInWeek(i, weekDates));
@@ -2941,7 +2975,9 @@ function renderWeek() {
 
     // TODOS
     h += `<div class="sec-label"><span>📌 待办事项</span><button class="sec-add-btn" onclick="event.stopPropagation();addTodo('${mod.id}')">+ 新增</button></div>`;
+    h += `<div class="todo-sort-zone" data-mod-id="${mod.id}" data-context="week">`;
     notDone.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'week'); });
+    h += `</div>`;
     if(done.length) {
       h += `<div class="sec-label" style="font-size:10px;padding:5px 20px"><span>✅ 已完成</span></div>`;
       done.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'week'); });
@@ -3045,8 +3081,8 @@ function todoRowHTML(t, weekDates, todayStr, context, hiddenSlotIds, slotLabel) 
     else if(t.date && t.date < todayStr) cls.push('overdue-hl');
   }
 
-  // In day view, make items draggable (both assigned and unassigned)
-  if(context === 'day' && !isDone) cls.push('draggable-todo');
+  // Make all undone todos draggable for reordering
+  if(!isDone) cls.push('draggable-todo');
 
   let meta = '';
   if(t.date && context === 'week') {
@@ -3068,9 +3104,9 @@ function todoRowHTML(t, weekDates, todayStr, context, hiddenSlotIds, slotLabel) 
   if(t.status==='progress') meta += `<span class="tag prog-tag">进行中</span>`;
   if(t.note) meta += `<span class="tag note-tag">${esc(t.note)}</span>`;
 
-  const draggable = (context === 'day' && !isDone) ? ` draggable="true" ondragstart="onTodoDragStart(event,'${t.id}')"` : '';
+  const draggable = !isDone ? ` draggable="true" ondragstart="onTodoDragStart(event,'${t.id}')"` : '';
   // In day view with draggable: default contenteditable=false, double-click to edit
-  const isDayDraggable = (context === 'day' && !isDone);
+  const isDayDraggable = (!isDone);
   const cedit = isDayDraggable ? 'false' : 'true';
   const editTrigger = isDayDraggable
     ? `ondblclick="enableRowEdit(this,'${t.id}')" onblur="disableRowEdit(this,'${t.id}')"`
@@ -3183,7 +3219,9 @@ function renderDay() {
       if(visibleNotDone.length === 0 && visibleDone.length === 0) return;
 
       h += `<div class="sec-label" style="font-size:10px;padding:5px 20px"><span>${grp.mod.emoji} ${grp.mod.name}</span><button class="sec-add-btn" onclick="event.stopPropagation();addTodoInDayForModule('${grp.mod.id}')">+ 新增</button></div>`;
-      visibleNotDone.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'day'); });
+      h += `<div class="todo-sort-zone" data-mod-id="${grp.mod.id}" data-context="day">`;
+      sortTodos(visibleNotDone).forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'day'); });
+      h += `</div>`;
       visibleDone.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'day'); });
     });
   }
@@ -3663,16 +3701,11 @@ function addTodo(modId) {
   // Mark which week this todo belongs to (same pattern as info.week)
   const weekMonday = fmtDate(getCurrentWeekMonday());
   mod.todos.push({id:newId, text:'新待办事项', status:'pending', note:'', date:'', week:weekMonday});
-  saveState(); renderWeek();
+  saveState(); renderWeek(); if(currentView==='day') renderDay();
   setTimeout(()=>{
     const el = document.querySelector(`[data-id="${newId}"] .row-text`);
     if(el) {
-      el.focus();
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
+      enableRowEdit(el, newId);
     }
   }, 50);
   toast('➕ 已添加待办');
@@ -3963,7 +3996,127 @@ function onTodoDragStart(event, todoId) {
 document.addEventListener('dragend', () => {
   document.querySelectorAll('.row.dragging, .ts-item.dragging').forEach(el => el.classList.remove('dragging'));
   document.querySelectorAll('.time-slot.drag-over').forEach(el => el.classList.remove('drag-over'));
+  // Clean up sort indicators
+  document.querySelectorAll('.sort-indicator').forEach(el => el.remove());
+  document.querySelectorAll('.todo-sort-zone.sort-drag-over').forEach(el => el.classList.remove('sort-drag-over'));
   dragTodoId = null;
+});
+
+// ================================================================
+// DRAG & DROP for todo REORDERING (within a module's todo list)
+// ================================================================
+document.addEventListener('dragover', function(e) {
+  const zone = e.target.closest('.todo-sort-zone');
+  if(!zone) return;
+
+  // Only handle if dragging a todo
+  if(!dragTodoId) return;
+
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+
+  // Find the closest .row.todo to determine insertion point
+  const rows = [...zone.querySelectorAll('.row.todo:not(.dragging)')];
+  if(rows.length === 0) {
+    zone.classList.add('sort-drag-over');
+    return;
+  }
+
+  // Remove previous indicators
+  zone.querySelectorAll('.sort-indicator').forEach(el => el.remove());
+
+  // Find insertion point
+  let insertBefore = null;
+  for(const row of rows) {
+    const rect = row.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    if(e.clientY < midY) {
+      insertBefore = row;
+      break;
+    }
+  }
+
+  // Create indicator line
+  const indicator = document.createElement('div');
+  indicator.className = 'sort-indicator';
+  if(insertBefore) {
+    zone.insertBefore(indicator, insertBefore);
+  } else {
+    zone.appendChild(indicator);
+  }
+});
+
+document.addEventListener('dragleave', function(e) {
+  const zone = e.target.closest('.todo-sort-zone');
+  if(zone && !zone.contains(e.relatedTarget)) {
+    zone.classList.remove('sort-drag-over');
+    zone.querySelectorAll('.sort-indicator').forEach(el => el.remove());
+  }
+});
+
+// Shared sort-drop handler (used by both document-level drop and onTodoListDrop)
+function handleSortDrop(e, zone, todoId) {
+  // Only handle reordering drops here (not slot drops)
+  const modId = zone.dataset.modId;
+  if(!modId) return;
+
+  // Check if this is a reorder within the same module's todo zone
+  const draggedTodoResult = findTodo(todoId);
+  if(!draggedTodoResult) return;
+
+  // If different module, skip (let slot logic handle it)
+  if(draggedTodoResult.mod.id !== modId) return;
+
+  e.preventDefault();
+
+  // Clean up indicators
+  zone.querySelectorAll('.sort-indicator').forEach(el => el.remove());
+  zone.classList.remove('sort-drag-over');
+
+  // Get the current visible order of todo IDs in this zone
+  const rows = [...zone.querySelectorAll('.row.todo:not(.dragging)')];
+  const orderedIds = rows.map(r => r.dataset.id);
+
+  // Find where the dragged item should go
+  let insertIdx = orderedIds.length; // default: end
+  for(let i = 0; i < rows.length; i++) {
+    const rect = rows[i].getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    if(e.clientY < midY) {
+      insertIdx = i;
+      break;
+    }
+  }
+
+  // Build new sorted ID list
+  const finalOrder = [...orderedIds];
+  // Remove dragged item if it's already in the list
+  const existIdx = finalOrder.indexOf(todoId);
+  if(existIdx !== -1) finalOrder.splice(existIdx, 1);
+  // Insert at new position
+  if(insertIdx > finalOrder.length) insertIdx = finalOrder.length;
+  finalOrder.splice(insertIdx, 0, todoId);
+
+  // Apply sortIndex to the module's todos based on this order
+  const mod = draggedTodoResult.mod;
+  finalOrder.forEach((id, idx) => {
+    const t = mod.todos.find(x => x.id === id);
+    if(t) t.sortIndex = idx;
+  });
+
+  saveState();
+  if(currentView === 'week') renderWeek(); else renderDay();
+  toast('↕️ 已调整顺序');
+}
+
+document.addEventListener('drop', function(e) {
+  const zone = e.target.closest('.todo-sort-zone');
+  if(!zone) return;
+
+  const todoId = e.dataTransfer.getData('text/plain') || dragTodoId;
+  if(!todoId) return;
+
+  handleSortDrop(e, zone, todoId);
 });
 
 function onSlotDragOver(event) {
@@ -4036,6 +4189,13 @@ function onTodoListDrop(e, dateStr) {
 
   const todoId = e.dataTransfer.getData('text/plain') || dragTodoId;
   if(!todoId) return;
+
+  // Check if this is a sort-zone reorder first
+  const sortZone = e.target.closest('.todo-sort-zone');
+  if(sortZone) {
+    handleSortDrop(e, sortZone, todoId);
+    return;
+  }
 
   // Remove from all slots
   const slots = getTimeSlots(dateStr);
