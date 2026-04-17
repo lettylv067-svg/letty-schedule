@@ -950,82 +950,16 @@ function normalizeRelativeTimeInText(text, detectedDate) {
 let _uid = 100;
 function uid() { return 'u' + (++_uid); }
 
+// DEFAULT_MODULES is an EMPTY scaffold — real data comes ONLY from cloud/localStorage.
+// Never put demo data here; it would overwrite user's real edits on every page load.
 const DEFAULT_MODULES = [
-  {
-    id:'text-edit', name:'文字整理', emoji:'📝',
-    todos:[
-      {id:'t1',text:'基础版后续重点：无差异发送率低——为啥',status:'pending',note:'本周内问一下',date:''},
-      {id:'t2',text:'基础版后续重点：中间跳变——为啥',status:'pending',note:'本周内问一下',date:''},
-      {id:'t3',text:'研读一下算法文档',status:'pending',note:'本周内',date:''},
-    ],
-    infos:[
-      {id:'i1',text:'基础版：正在实验中，正在分析中，仅安卓实验',highlighted:false,week:'04/14'},
-      {id:'i2',text:'基础版 - 调用频率：16字+，然后一个分隔符整理一下',highlighted:false,week:'04/14'},
-      {id:'i3',text:'基础版 - 长文没弄',highlighted:false,week:'04/14'},
-      {id:'i4',text:'激进版：等待下一步分析（下周）',highlighted:false,week:'04/14'},
-    ]
-  },
-  {
-    id:'association', name:'联想', emoji:'💡',
-    todos:[
-      {id:'t5',text:'诗歌如何补充？',status:'pending',note:'准确率低于豆包，需要RAG解决',date:''},
-      {id:'t6',text:'新热内容补充',status:'pending',note:'',date:''},
-      {id:'t7',text:'研读一下算法文档',status:'pending',note:'下周，有空做',date:''},
-    ],
-    infos:[
-      {id:'i5',text:'当前：诗歌的准确率低于豆包，需要RAG解决',highlighted:false,week:'04/14'},
-    ]
-  },
-  {
-    id:'candidate', name:'候选', emoji:'🎯',
-    todos:[
-      {id:'t8',text:'研读一下算法文档',status:'pending',note:'',date:''},
-      {id:'t9',text:'开一下会',status:'pending',note:'',date:''},
-    ],
-    infos:[]
-  },
-  {
-    id:'voice', name:'语音', emoji:'🎙️',
-    todos:[
-      {id:'t10',text:'audiollm 实验',status:'progress',note:'',date:''},
-      {id:'t11',text:'0331后处理实验',status:'progress',note:'',date:''},
-      {id:'t12',text:'出字速度实验：客户端是否收到尾包已经加上了，准备重开实验',status:'pending',note:'',date:''},
-    ],
-    infos:[
-      {id:'i6',text:'方言2.5b(0203-punc-3p)的更新包括方言、bugfix（英文后处理sion）✅已上线',highlighted:false,week:'04/14'},
-    ]
-  },
-  {
-    id:'growth', name:'新增', emoji:'🚀',
-    todos:[
-      {id:'t13',text:'iOS 灰度 5%',status:'done',note:'',date:'04/15'},
-      {id:'t14',text:'iOS 灰度 20%',status:'pending',note:'',date:'04/16'},
-      {id:'t15',text:'iOS 灰度 100%',status:'pending',note:'',date:'04/19'},
-      {id:'t16',text:'推送红点 5%',status:'pending',note:'',date:'04/20'},
-      {id:'t17',text:'推送红点 20%',status:'pending',note:'',date:'04/21'},
-      {id:'t18',text:'推送红点 100%',status:'pending',note:'',date:'04/22'},
-      {id:'t19',text:'红点到期消失',status:'pending',note:'0422的8天后，用户没点击时红点也会到期消失，结束本轮推广',date:'04/30'},
-    ],
-    infos:[
-      {id:'i7',text:'iOS灰度计划辛苦iga看看是否ok，Android要等T3发布，也尽快对齐',highlighted:false,week:'04/14'},
-    ]
-  },
-  {
-    id:'mobile', name:'移动端版本', emoji:'📱',
-    todos:[
-      {id:'t20',text:'常用语扩长度的进度问一下',status:'pending',note:'',date:''},
-    ],
-    infos:[
-      {id:'i8',text:'下周灰度',highlighted:false,week:'04/14'},
-    ]
-  },
-  {
-    id:'pc', name:'PC端版本', emoji:'💻',
-    todos:[
-      {id:'t21',text:'文字整理的进展问一下',status:'pending',note:'',date:''},
-    ],
-    infos:[]
-  }
+  { id:'text-edit',   name:'文字整理',   emoji:'📝', todos:[], infos:[] },
+  { id:'association', name:'联想',       emoji:'💡', todos:[], infos:[] },
+  { id:'candidate',  name:'候选',       emoji:'🎯', todos:[], infos:[] },
+  { id:'voice',      name:'语音',       emoji:'🎙️', todos:[], infos:[] },
+  { id:'growth',     name:'新增',       emoji:'🚀', todos:[], infos:[] },
+  { id:'mobile',     name:'移动端版本', emoji:'📱', todos:[], infos:[] },
+  { id:'pc',         name:'PC端版本',   emoji:'💻', todos:[], infos:[] },
 ];
 
 let MODULES = JSON.parse(JSON.stringify(DEFAULT_MODULES));
