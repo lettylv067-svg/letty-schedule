@@ -2481,7 +2481,28 @@ function addTodoInSlot(slotKey, dateStr) {
 // ================================================================
 // INIT
 // ================================================================
-loadState(); // Fast: load from localStorage first
+
+// One-time migration: detect and purge stale demo data from localStorage
+// Demo data had hardcoded IDs like t1, t2, i1, i2 etc.
+(function purgeDemoCache() {
+  const raw = localStorage.getItem(STORE_KEY);
+  if (!raw) return;
+  try {
+    const saved = JSON.parse(raw);
+    if (!saved.modules) return;
+    const allTodoIds = new Set();
+    saved.modules.forEach(m => (m.todos || []).forEach(t => allTodoIds.add(t.id)));
+    // Demo data signature: contains t1, t2, t3 — real user data would never have these sequential IDs
+    const demoSignature = ['t1', 't2', 't3', 't8', 't13'];
+    const isDemoData = demoSignature.every(id => allTodoIds.has(id));
+    if (isDemoData) {
+      console.log('🧹 Detected stale demo data in localStorage, purging...');
+      localStorage.removeItem(STORE_KEY);
+    }
+  } catch(e) {}
+})();
+
+loadState(); // Fast: load from localStorage first (if any remains after purge)
 
 // 规范化所有 info 的 week 字段
 function normalizeInfoWeeks() {
