@@ -2687,7 +2687,7 @@ function renderWeek() {
     if(notDone.length) h+=`<span class="badge todo-b">${notDone.length} 待办</span>`;
     if(done.length) h+=`<span class="badge done-b">${done.length} 完成</span>`;
     if(weekInfos.length) h+=`<span class="badge info-b">${weekInfos.length} 信息</span>`;
-    h += `<button class="mod-del-btn" title="删除模块" onclick="event.stopPropagation();deleteModule('${mod.id}')">✕</button>`;
+    h += `<button class="mod-del-btn" title="删除模块" onclick="event.stopPropagation();deleteModule('${mod.id}')">🗑️</button>`;
     h += `</div></div>`;
 
     h += `<div class="module-body" id="body-${mod.id}">`;
