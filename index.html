@@ -3312,7 +3312,12 @@ function addTodo(modId) {
   const mod=findMod(modId);
   if(!mod) return;
   const newId = uid();
-  mod.todos.push({id:newId, text:'新待办事项', status:'pending', note:'', date:''});
+  // If viewing a different week, default date to that week's Monday so the todo shows up there
+  let defaultDate = '';
+  if(weekOffset !== 0) {
+    defaultDate = fmtDate(getCurrentWeekMonday());
+  }
+  mod.todos.push({id:newId, text:'新待办事项', status:'pending', note:'', date:defaultDate});
   saveState(); renderWeek();
   setTimeout(()=>{
     const el = document.querySelector(`[data-id="${newId}"] .row-text`);
