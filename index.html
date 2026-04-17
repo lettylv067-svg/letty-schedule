@@ -1225,8 +1225,11 @@ function infoInWeek(info, weekDates) {
 // ================================================================
 // TIME AUTO-DETECTION
 // ================================================================
-function parseTimeFromText(text) {
+function parseTimeFromText(text, referenceMonday) {
   const today = new Date();
+  // referenceMonday: the Monday of the week this todo belongs to
+  // If provided, "周X" resolves relative to that week, not the current system week
+  const baseMon = referenceMonday ? new Date(referenceMonday) : getMonday(today);
 
   if(/下周/.test(text)) {
     const m2 = text.match(/下周([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])/);
@@ -1234,7 +1237,7 @@ function parseTimeFromText(text) {
       const weekDayMap = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'日':0,'天':0};
       const targetDay = weekDayMap[m2[1]];
       if(targetDay !== undefined) {
-        const nextMon = getMonday(today);
+        const nextMon = new Date(baseMon);
         nextMon.setDate(nextMon.getDate() + 7);
         const d = new Date(nextMon);
         const offset = targetDay === 0 ? 6 : targetDay - 1;
@@ -1242,9 +1245,9 @@ function parseTimeFromText(text) {
         return fmtDate(d);
       }
     }
-    const mon = getMonday(today);
-    mon.setDate(mon.getDate() + 7);
-    return fmtDate(mon);
+    const nextMon = new Date(baseMon);
+    nextMon.setDate(nextMon.getDate() + 7);
+    return fmtDate(nextMon);
   }
 
   const weekDayMap = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'日':0,'天':0};
@@ -1252,10 +1255,9 @@ function parseTimeFromText(text) {
   if(m) {
     const targetDay = weekDayMap[m[1]];
     if(targetDay !== undefined) {
-      const mon = getMonday(today);
-      const d = new Date(mon);
+      const d = new Date(baseMon);
       const offset = targetDay === 0 ? 6 : targetDay - 1;
-      d.setDate(mon.getDate() + offset);
+      d.setDate(baseMon.getDate() + offset);
       return fmtDate(d);
     }
   }
@@ -1275,9 +1277,14 @@ function parseTimeFromText(text) {
 }
 
 function detectDateFromItem(item) {
-  let detected = parseTimeFromText(item.text || '');
+  // Derive reference Monday from item's week field so "周X" resolves to the correct week
+  let refMon = null;
+  if(item.week) {
+    refMon = getMonday(dateToObj(item.week));
+  }
+  let detected = parseTimeFromText(item.text || '', refMon);
   if(!detected && item.note) {
-    detected = parseTimeFromText(item.note);
+    detected = parseTimeFromText(item.note, refMon);
   }
   return detected;
 }
