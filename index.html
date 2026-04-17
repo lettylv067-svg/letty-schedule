@@ -1,0 +1,2651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Letty 的日程管理</title>
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --card: rgba(255,255,255,0.82);
+    --card-solid: #ffffff;
+    --border: rgba(0,0,0,0.06);
+    --border-strong: rgba(0,0,0,0.1);
+    --text: #1c1c1e;
+    --text-sec: #8e8e93;
+    --text-tri: #aeaeb2;
+    --primary: #007aff;
+    --primary-soft: rgba(0,122,255,0.08);
+    --primary-medium: rgba(0,122,255,0.15);
+    --done-c: #34c759;
+    --done-bg: rgba(52,199,89,0.08);
+    --prog-c: #5856d6;
+    --prog-bg: rgba(88,86,214,0.08);
+    --info-c: #af52de;
+    --info-bg: rgba(175,82,222,0.08);
+    --warn-c: #ff9500;
+    --warn-bg: rgba(255,149,0,0.08);
+    --hl-bg: rgba(255,204,0,0.18);
+    --today-glow: rgba(0,122,255,0.06);
+    --today-border: #007aff;
+    --week-hl: rgba(88,86,214,0.05);
+    --week-border: #5856d6;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+    --shadow: 0 2px 8px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
+    --shadow-up: 0 -1px 4px rgba(0,0,0,0.04);
+    --r: 16px;
+    --r-lg: 20px;
+    --rs: 12px;
+    --r-sm: 8px;
+    --danger: #ff3b30;
+    --glass: saturate(1.8) blur(20px);
+    --trans-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --trans-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+  body {
+    font-family: -apple-system, 'SF Pro Display', 'SF Pro Text', 'PingFang SC', BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); line-height:1.5; min-height:100vh;
+    letter-spacing: -0.01em;
+  }
+
+  /* ========== HEADER — Apple Glass Bar ========== */
+  .header {
+    background: rgba(255,255,255,0.72);
+    -webkit-backdrop-filter: var(--glass);
+    backdrop-filter: var(--glass);
+    border-bottom: 0.5px solid rgba(0,0,0,0.12);
+    color: var(--text);
+    padding: 14px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-left { display:flex; align-items:center; gap:14px; }
+  .header h1 {
+    font-size: 20px; font-weight: 700;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header-right { display:flex; align-items:center; gap:14px; }
+
+  .view-tabs {
+    display: flex; gap: 2px;
+    background: rgba(118,118,128,0.12); padding: 2px; border-radius: 10px;
+  }
+  .view-tab {
+    padding: 6px 18px; border: none; background: transparent;
+    color: var(--text-sec); font-size: 13px; font-weight: 600;
+    cursor: pointer; border-radius: 8px; transition: all .25s var(--trans-smooth);
+  }
+  .view-tab:hover { color: var(--text); }
+  .view-tab.active {
+    background: #fff; color: var(--text);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 0.5px 1px rgba(0,0,0,0.06);
+  }
+
+  .week-nav { display:flex; align-items:center; gap:8px; }
+  .week-nav-btn {
+    background: rgba(118,118,128,0.08); border: none; color: var(--primary);
+    width: 32px; height: 32px; border-radius: 10px; cursor: pointer;
+    font-size: 13px; display:flex; align-items:center; justify-content:center;
+    transition: all .2s var(--trans-smooth); font-weight: 600;
+  }
+  .week-nav-btn:hover { background: var(--primary-soft); }
+  .week-nav-btn:active { transform: scale(0.92); }
+  .week-label {
+    font-size: 13px; color: var(--text);
+    background: rgba(118,118,128,0.08);
+    padding: 6px 16px; border-radius: 10px; font-weight: 600;
+    min-width: 190px; text-align: center;
+  }
+  .week-today-btn {
+    background: var(--primary-soft); border: none; color: var(--primary);
+    padding: 6px 14px; border-radius: 10px; cursor: pointer;
+    font-size: 12px; font-weight: 600; transition: all .2s var(--trans-smooth);
+  }
+  .week-today-btn:hover { background: var(--primary-medium); }
+  .week-today-btn:active { transform: scale(0.95); }
+
+  /* ========== MAIN ========== */
+  .main { max-width: 1440px; margin: 0 auto; padding: 24px; }
+
+  /* ========== MODULE GRID ========== */
+  .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
+
+  .module-card {
+    background: var(--card-solid);
+    border-radius: var(--r-lg); border: 0.5px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden; transition: box-shadow .3s var(--trans-smooth);
+  }
+  .module-card:hover { box-shadow: var(--shadow); }
+
+  .module-head {
+    padding: 16px 20px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom: 0.5px solid var(--border);
+    background: rgba(255,255,255,0.5);
+  }
+  .module-title { display:flex; align-items:center; gap:10px; }
+  .m-emoji { font-size: 22px; }
+  .m-name { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+  .m-badges { display:flex; gap:6px; }
+  .badge {
+    font-size: 11px; font-weight: 600;
+    padding: 2px 10px; border-radius: 100px;
+  }
+  .badge.todo-b { background: var(--warn-bg); color: var(--warn-c); }
+  .badge.done-b { background: var(--done-bg); color: var(--done-c); }
+  .badge.info-b { background: var(--info-bg); color: var(--info-c); }
+
+  .module-body { max-height: 800px; overflow-y: auto; }
+
+  .sec-label {
+    padding: 8px 20px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text-sec); background: rgba(0,0,0,0.02);
+    border-bottom: 0.5px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .sec-add-btn {
+    background: none; border: 1px dashed var(--border-strong);
+    padding: 2px 12px; border-radius: 8px; font-size: 11px;
+    color: var(--primary); cursor: pointer; font-weight: 600;
+    transition: all .2s var(--trans-smooth);
+  }
+  .sec-add-btn:hover { background: var(--primary-soft); border-color: var(--primary); }
+
+  /* ========== TODO ROW ========== */
+  .row {
+    padding: 10px 20px; display:flex; align-items:flex-start; gap: 10px;
+    border-bottom: 0.5px solid var(--border); transition: background .2s var(--trans-smooth); position:relative;
+  }
+  .row:hover { background: rgba(0,0,0,0.02); }
+  .row:last-child { border-bottom: none; }
+  .row.todo.completed { opacity: .38; }
+  .row.todo.completed .row-text { text-decoration: line-through; text-decoration-color: var(--text-tri); }
+
+  .row.todo.today-hl {
+    background: var(--today-glow);
+    border-left: 3px solid var(--today-border);
+  }
+  .row.todo.today-hl:hover { background: rgba(0,122,255,0.08); }
+  .row.todo.this-week-hl {
+    background: var(--week-hl);
+    border-left: 3px solid var(--week-border);
+  }
+  .row.todo.this-week-hl:hover { background: rgba(88,86,214,0.08); }
+
+  .row-cb { margin-top: 2px; flex-shrink: 0; }
+  .row-cb input[type="checkbox"] {
+    width: 18px; height: 18px; accent-color: var(--primary);
+    cursor: pointer; border-radius: 50%;
+  }
+  .row-body { flex:1; min-width:0; }
+  .row-text {
+    font-size: 14px; font-weight: 500; word-break:break-word;
+    outline: none; border-radius: 6px; padding: 2px 4px; margin: -2px -4px;
+    transition: all .2s var(--trans-smooth); line-height: 1.5;
+  }
+  .draggable-todo .row-text[contenteditable="false"] {
+    cursor: grab; user-select: none;
+  }
+  .draggable-todo .row-text[contenteditable="true"] {
+    cursor: text;
+  }
+  .row-text:focus {
+    background: var(--primary-soft);
+    box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+  }
+
+  .row-meta { display:flex; gap:6px; margin-top:4px; flex-wrap:wrap; }
+  .tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .tag.date-tag { background: rgba(0,122,255,0.08); color: var(--primary); }
+  .tag.prog-tag { background: var(--prog-bg); color: var(--prog-c); }
+  .tag.note-tag { background: rgba(0,0,0,0.04); color: var(--text-sec); }
+  .tag.auto-date-tag { background: var(--done-bg); color: var(--done-c); }
+
+
+  /* Day view: todo list drop zone highlight */
+  .day-section.drop-highlight {
+    outline: 2px dashed var(--primary);
+    outline-offset: -2px;
+    background: var(--primary-soft) !important;
+  }
+
+  .row.info.highlighted { background: var(--hl-bg) !important; }
+  .row.info .row-actions { opacity: 0; transition: opacity .2s; }
+  .row.info:hover .row-actions { opacity: 1; }
+  .row.info .row-actions:focus-within { opacity: 1; }
+  .info-dot { width:6px; height:6px; border-radius:50%; background: var(--info-c); margin-top:10px; flex-shrink:0; }
+
+  /* ========== INFO NOTE — 备忘录/笔记风格 ========== */
+  .info-note-area {
+    flex: 1; min-width: 0;
+    font-size: 13.5px; font-weight: 400; font-family: inherit;
+    color: var(--text); line-height: 1.65; word-break: break-word;
+    background: transparent; border: none; outline: none;
+    resize: none; overflow: hidden;
+    padding: 4px 8px; margin: -4px -8px;
+    border-radius: 8px;
+    transition: all .2s var(--trans-smooth);
+    width: 100%;
+    min-height: 24px;
+  }
+  .info-note-area:focus {
+    background: rgba(175,82,222,0.04);
+    box-shadow: 0 0 0 3px rgba(175,82,222,0.1);
+  }
+  .info-note-area::placeholder { color: var(--text-tri); font-style: italic; }
+
+  .row-actions { display:flex; gap:4px; opacity:0; transition:opacity .15s; flex-shrink:0; margin-top:2px; }
+  .row:hover .row-actions { opacity:1; }
+  .act-btn {
+    background: none; border: 1px solid var(--border-strong);
+    width: 26px; height: 26px; border-radius: 8px;
+    cursor: pointer; display:flex; align-items:center; justify-content:center;
+    font-size: 12px; color: var(--text-sec); transition: all .2s var(--trans-smooth);
+  }
+  .act-btn:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+  .act-btn.hl-on { background: var(--hl-bg); border-color: #ffcc00; color: #a16207; }
+  .act-btn.del:hover { background: rgba(255,59,48,0.08); border-color: var(--danger); color: var(--danger); }
+  .act-btn.date-btn { opacity: 0; font-size: 11px; border: none; }
+  .row:hover .act-btn.date-btn { opacity: 1; }
+
+  .more-info-btn {
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    padding: 12px 20px; margin: 6px 16px 16px;
+    background: var(--info-bg); border: 1px dashed rgba(175,82,222,0.3);
+    border-radius: var(--rs); cursor:pointer; transition:all .2s var(--trans-smooth);
+    font-size: 12px; font-weight: 600; color: var(--info-c);
+  }
+  .more-info-btn:hover { background: rgba(175,82,222,0.12); border-style: solid; }
+
+  /* ========== ADD MODULE CARD ========== */
+  .add-module-card {
+    background: var(--card-solid);
+    border-radius: var(--r-lg); border: 2px dashed var(--border-strong);
+    display: flex; align-items: center; justify-content: center;
+    min-height: 160px; cursor: pointer;
+    transition: border-color .3s var(--trans-smooth), background .3s var(--trans-smooth);
+    flex-direction: column; gap: 10px;
+  }
+  .add-module-card:hover { border-color: var(--primary); background: var(--primary-soft); }
+  .add-module-card .add-icon {
+    width: 44px; height: 44px; border-radius: 14px;
+    background: var(--primary-soft); color: var(--primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 300; transition: all .3s var(--trans-spring);
+  }
+  .add-module-card:hover .add-icon { background: var(--primary); color: #fff; transform: scale(1.08); }
+  .add-module-card .add-text { font-size: 13px; font-weight: 600; color: var(--text-sec); }
+  .add-module-card:hover .add-text { color: var(--primary); }
+
+  /* ========== ADD MODULE MODAL ========== */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.3);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 300; opacity: 0; transition: opacity .25s var(--trans-smooth);
+    pointer-events: none;
+  }
+  .modal-overlay.active { opacity: 1; pointer-events: auto; }
+  .modal-box {
+    background: var(--card-solid); border-radius: var(--r-lg);
+    padding: 28px 32px; box-shadow: var(--shadow-lg);
+    max-width: 420px; width: 90%; text-align: center;
+    transform: scale(0.92) translateY(20px);
+    transition: transform .35s var(--trans-spring), opacity .25s var(--trans-smooth);
+    opacity: 0;
+  }
+  .modal-overlay.active .modal-box { transform: scale(1) translateY(0); opacity: 1; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .modal-subtitle { font-size: 13px; color: var(--text-sec); margin-bottom: 20px; }
+
+  .emoji-picker {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    margin-bottom: 20px; padding: 12px;
+    background: rgba(0,0,0,0.02); border-radius: var(--rs);
+  }
+  .emoji-opt {
+    width: 42px; height: 42px; border: 2px solid transparent;
+    border-radius: 12px; background: rgba(0,0,0,0.03);
+    font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all .2s var(--trans-spring);
+  }
+  .emoji-opt:hover { background: rgba(0,122,255,0.08); transform: scale(1.1); }
+  .emoji-opt.selected { border-color: var(--primary); background: var(--primary-soft); transform: scale(1.12); }
+
+  .modal-input {
+    width: 100%; padding: 12px 16px; border: 1px solid var(--border-strong);
+    border-radius: var(--rs); font-size: 15px; font-weight: 500;
+    outline: none; transition: all .2s var(--trans-smooth);
+    background: rgba(0,0,0,0.02); color: var(--text);
+    font-family: inherit;
+  }
+  .modal-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0,122,255,0.12);
+    background: #fff;
+  }
+  .modal-input::placeholder { color: var(--text-tri); }
+
+  .modal-btns { display: flex; gap: 10px; margin-top: 20px; justify-content: center; }
+  .modal-btn {
+    padding: 10px 28px; border-radius: 12px; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none; transition: all .2s var(--trans-smooth);
+    font-family: inherit;
+  }
+  .modal-btn:active { transform: scale(0.96); }
+  .modal-btn.cancel { background: rgba(118,118,128,0.12); color: var(--text); }
+  .modal-btn.cancel:hover { background: rgba(118,118,128,0.18); }
+  .modal-btn.confirm { background: var(--primary); color: #fff; }
+  .modal-btn.confirm:hover { background: #0066d6; }
+  .modal-btn.confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ========== INFO DETAIL PAGE ========== */
+  .page-main { display:block; }
+  .page-info-detail { display:none; }
+  body.show-info-detail .page-main { display:none; }
+  body.show-info-detail .page-info-detail { display:block; }
+
+  .info-detail-header {
+    background: var(--card-solid);
+    border-radius: var(--r-lg); border: 0.5px solid var(--border);
+    padding: 20px 28px; margin-bottom: 20px; box-shadow: var(--shadow-sm);
+    display:flex; align-items:center; gap:16px;
+  }
+  .info-back-btn {
+    width: 38px; height: 38px; border: 1px solid var(--border-strong); background: #fff;
+    border-radius: var(--rs); cursor: pointer; font-size: 16px;
+    display:flex; align-items:center; justify-content:center;
+    transition: all .2s var(--trans-smooth); flex-shrink: 0; color: var(--primary);
+  }
+  .info-back-btn:hover { background: var(--primary-soft); border-color: var(--primary); }
+  .info-detail-title { display:flex; align-items:center; gap:10px; }
+  .info-detail-title .big-emoji { font-size: 28px; }
+  .info-detail-title .title-name { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+  .info-detail-title .title-sub { font-size: 13px; color: var(--text-sec); margin-left: 2px; }
+
+  .info-detail-add {
+    margin-left: auto;
+    padding: 10px 22px; border: none; background: var(--primary);
+    border-radius: var(--rs); font-size: 13px; font-weight: 600;
+    color: #fff; cursor: pointer; transition: all .2s var(--trans-smooth);
+    font-family: inherit;
+  }
+  .info-detail-add:hover { background: #0066d6; }
+  .info-detail-add:active { transform: scale(0.96); }
+
+  .info-wk-card {
+    background: var(--card-solid);
+    border-radius: var(--r-lg); border: 0.5px solid var(--border);
+    box-shadow: var(--shadow-sm); overflow: hidden; margin-bottom: 16px;
+  }
+  .info-wk-header {
+    padding: 12px 24px; display:flex; align-items:center; gap:10px;
+    background: var(--info-bg); border-bottom: 0.5px solid rgba(175,82,222,0.1);
+    font-size: 13px; font-weight: 700; color: var(--info-c);
+  }
+  .info-wk-header::before {
+    content:''; display:inline-block; width:8px; height:8px;
+    border-radius:50%; background: var(--info-c); flex-shrink:0;
+  }
+  .info-wk-header .range { color: var(--text-sec); font-weight: 500; font-size: 12px; }
+  .info-wk-body .info-row {
+    padding: 12px 24px 12px 42px; display:flex; align-items:flex-start; gap:10px;
+    border-bottom: 0.5px solid var(--border); transition: background .2s; position: relative;
+  }
+  .info-wk-body .info-row:hover { background: rgba(0,0,0,0.02); }
+  .info-wk-body .info-row:last-child { border-bottom:none; }
+  .info-wk-body .info-row.highlighted { background: var(--hl-bg) !important; }
+  .info-wk-body .info-row .dot {
+    position: absolute; left: 24px; top: 18px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--info-c);
+  }
+  .info-wk-body .info-row .i-text {
+    flex:1; font-size: 13.5px; font-weight: 400; font-family: inherit;
+    color: var(--text); line-height: 1.65;
+    word-break: break-word; outline: none; border: none;
+    background: transparent; resize: none; overflow: hidden;
+    border-radius: 8px; padding: 4px 8px; margin: -4px -8px;
+    transition: all .2s var(--trans-smooth); width: 100%; min-height: 24px;
+  }
+  .info-wk-body .info-row .i-text:focus {
+    background: rgba(175,82,222,0.04);
+    box-shadow: 0 0 0 3px rgba(175,82,222,0.1);
+  }
+  .info-wk-body .info-row .i-text::placeholder { color: var(--text-tri); font-style: italic; }
+  .info-wk-body .info-row .i-actions { display:flex; gap:4px; opacity:0; transition:opacity .15s; flex-shrink:0; }
+  .info-wk-body .info-row:hover .i-actions { opacity:1; }
+
+  .info-empty-page { text-align:center; padding:60px; color: var(--text-sec); }
+  .info-empty-page .big-icon { font-size: 48px; margin-bottom: 12px; }
+
+  /* ========== DAY VIEW ========== */
+  .day-view { display:none; }
+  .day-view.active { display:block; }
+  .week-view { display:none; }
+  .week-view.active { display:block; }
+
+  .day-header {
+    background: var(--card-solid);
+    border-radius: var(--r-lg); border: 0.5px solid var(--border);
+    padding: 24px 28px; margin-bottom: 20px; box-shadow: var(--shadow-sm);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .day-date {
+    font-size: 28px; font-weight: 800; letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .day-sub { font-size: 13px; color: var(--text-sec); margin-top: 2px; font-weight: 500; }
+  .day-nav { display:flex; gap:8px; }
+  .day-nav button {
+    width: 36px; height: 36px; border: 1px solid var(--border-strong); background: #fff;
+    border-radius: var(--rs); cursor: pointer; font-size: 14px;
+    display:flex; align-items:center; justify-content:center;
+    transition: all .2s var(--trans-smooth); color: var(--primary); font-weight: 600;
+  }
+  .day-nav button:hover { background: var(--primary-soft); border-color: var(--primary); }
+  .day-nav button:active { transform: scale(0.92); }
+
+  .day-section {
+    background: var(--card-solid);
+    border-radius: var(--r-lg); border: 0.5px solid var(--border);
+    box-shadow: var(--shadow-sm); overflow: hidden; margin-bottom: 16px;
+  }
+  .day-section-head {
+    padding: 14px 20px; border-bottom: 0.5px solid var(--border);
+    display:flex; align-items:center; gap:10px; justify-content: space-between;
+    background: rgba(255,255,255,0.5);
+  }
+  .day-section-head-left { display: flex; align-items: center; gap: 10px; }
+  .day-section-head .sec-add-btn { margin-left: auto; }
+
+  .empty-day { text-align:center; padding:60px; color: var(--text-sec); font-size: 14px; }
+  .empty-day .big-emoji { font-size: 48px; margin-bottom: 12px; }
+
+  /* ========== DAY VIEW — ADD TODO QUICK BAR ========== */
+  .day-add-bar {
+    background: var(--card-solid);
+    border-radius: var(--r-lg); border: 0.5px solid var(--border);
+    padding: 16px 20px; box-shadow: var(--shadow-sm);
+    display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+  }
+  .day-add-bar .add-label { font-size: 13px; font-weight: 600; color: var(--text-sec); white-space: nowrap; }
+  .day-add-select {
+    padding: 8px 12px; border: 1px solid var(--border-strong);
+    border-radius: var(--rs); font-size: 13px; font-weight: 500;
+    background: rgba(0,0,0,0.02); color: var(--text); outline: none;
+    font-family: inherit; cursor: pointer;
+    transition: border-color .2s;
+  }
+  .day-add-select:focus { border-color: var(--primary); }
+  .day-add-input {
+    flex: 1; padding: 10px 14px; border: 1px solid var(--border-strong);
+    border-radius: var(--rs); font-size: 14px; font-weight: 500;
+    outline: none; background: rgba(0,0,0,0.02); color: var(--text);
+    font-family: inherit; transition: all .2s var(--trans-smooth);
+  }
+  .day-add-input:focus {
+    border-color: var(--primary); background: #fff;
+    box-shadow: 0 0 0 4px rgba(0,122,255,0.1);
+  }
+  .day-add-input::placeholder { color: var(--text-tri); }
+  .day-add-submit {
+    padding: 10px 20px; border: none; background: var(--primary);
+    color: #fff; border-radius: var(--rs); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all .2s var(--trans-smooth); font-family: inherit;
+    white-space: nowrap;
+  }
+  .day-add-submit:hover { background: #0066d6; }
+  .day-add-submit:active { transform: scale(0.95); }
+
+  /* ========== SCROLLBAR ========== */
+  .module-body::-webkit-scrollbar { width: 4px; }
+  .module-body::-webkit-scrollbar-track { background: transparent; }
+  .module-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 4px; }
+
+  /* ========== TOAST ========== */
+  .toast {
+    position: fixed; bottom: 28px; right: 28px;
+    background: rgba(28,28,30,0.88);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    color: #fff; padding: 12px 22px;
+    border-radius: 14px; font-size: 13px; font-weight: 600;
+    box-shadow: var(--shadow-lg); transform: translateY(80px); opacity: 0;
+    transition: all .4s var(--trans-spring); z-index: 200;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ========== CONFIRM ========== */
+  .confirm-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.3);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 300;
+  }
+  .confirm-box {
+    background: var(--card-solid); border-radius: var(--r-lg); padding: 28px 32px;
+    box-shadow: var(--shadow-lg); max-width: 340px; width: 90%; text-align: center;
+  }
+  .confirm-box p { font-size: 15px; margin-bottom: 20px; font-weight: 500; line-height: 1.5; }
+  .confirm-btns { display:flex; gap:10px; justify-content:center; }
+  .confirm-btns button {
+    padding: 10px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none; transition: all .2s var(--trans-smooth);
+    font-family: inherit;
+  }
+  .confirm-btns button:active { transform: scale(0.96); }
+  .btn-cancel { background: rgba(118,118,128,0.12); color: var(--text); }
+  .btn-cancel:hover { background: rgba(118,118,128,0.18); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover { background: #e0332b; }
+
+  /* ========== DATE PICKER POPOVER ========== */
+  .date-picker-popover {
+    position: absolute; top: 100%; left: 40px; z-index: 50;
+    background: var(--card-solid); border: 0.5px solid var(--border-strong);
+    border-radius: var(--rs); box-shadow: var(--shadow-lg);
+    padding: 12px; min-width: 220px;
+    animation: fadeIn .2s var(--trans-smooth);
+  }
+  .date-picker-popover .dp-title {
+    font-size: 12px; font-weight: 700; color: var(--text-sec);
+    margin-bottom: 8px; text-align: center;
+  }
+  .date-picker-popover .dp-shortcuts {
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .date-picker-popover .dp-shortcut {
+    padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: 8px;
+    font-size: 11px; font-weight: 600; cursor: pointer; background: transparent;
+    color: var(--primary); transition: all .15s var(--trans-smooth);
+  }
+  .date-picker-popover .dp-shortcut:hover { background: var(--primary-soft); border-color: var(--primary); }
+
+  .tag.no-date-tag {
+    background: rgba(255,149,0,0.08); color: var(--warn-c);
+    cursor: pointer; border: 1px dashed rgba(255,149,0,0.3);
+    transition: all .2s var(--trans-smooth);
+  }
+  .tag.no-date-tag:hover { background: rgba(255,149,0,0.15); border-style: solid; }
+
+  /* ========== DAY VIEW — TIME SLOTS ========== */
+  .time-planner-title {
+    font-size: 16px; font-weight: 700; color: var(--text);
+    margin: 28px 0 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .time-planner-title .tp-sub { font-size: 12px; color: var(--text-tri); font-weight: 500; }
+
+  .time-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+
+  .time-slot {
+    background: var(--card-solid);
+    border-radius: var(--r-lg); border: 2px solid transparent;
+    box-shadow: var(--shadow-sm); overflow: hidden;
+    min-height: 180px; transition: all .25s var(--trans-smooth);
+    display: flex; flex-direction: column;
+  }
+  .time-slot.drag-over {
+    border-color: var(--primary);
+    box-shadow: var(--shadow), 0 0 0 4px rgba(0,122,255,0.1);
+    transform: scale(1.01);
+  }
+  .time-slot.morning { border-top: 3px solid #ff9500; }
+  .time-slot.afternoon { border-top: 3px solid #007aff; }
+  .time-slot.evening { border-top: 3px solid #5856d6; }
+
+  .ts-header {
+    padding: 14px 16px 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .ts-icon { font-size: 20px; }
+  .ts-label { font-size: 14px; font-weight: 700; }
+  .ts-time { font-size: 11px; color: var(--text-tri); font-weight: 500; margin-left: auto; }
+  .ts-count {
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 100px;
+    margin-left: 6px;
+  }
+  .morning .ts-label { color: #ff9500; }
+  .morning .ts-count { background: rgba(255,149,0,0.08); color: #ff9500; }
+  .afternoon .ts-label { color: #007aff; }
+  .afternoon .ts-count { background: rgba(0,122,255,0.08); color: #007aff; }
+  .evening .ts-label { color: #5856d6; }
+  .evening .ts-count { background: rgba(88,86,214,0.08); color: #5856d6; }
+
+  .ts-body { flex: 1; padding: 0 12px 12px; min-height: 80px; }
+  .ts-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; min-height: 80px; color: var(--text-tri); font-size: 12px;
+    border: 2px dashed var(--border); border-radius: var(--rs);
+    padding: 16px; text-align: center; transition: all .2s;
+  }
+  .time-slot.drag-over .ts-empty {
+    border-color: var(--primary); background: var(--primary-soft); color: var(--primary);
+  }
+  .ts-empty .drop-icon { font-size: 22px; margin-bottom: 4px; }
+
+  .ts-item {
+    padding: 8px 12px; margin-bottom: 6px;
+    background: rgba(0,0,0,0.02); border: 0.5px solid var(--border);
+    border-radius: var(--r-sm); display: flex; align-items: center; gap: 8px;
+    transition: all .2s var(--trans-smooth); font-size: 13px;
+    cursor: grab;
+  }
+  .ts-item:active { cursor: grabbing; }
+  .ts-item.dragging { opacity: 0.4; }
+  .ts-item:hover { background: rgba(0,0,0,0.04); }
+  .ts-item .ts-cb { flex-shrink: 0; }
+  .ts-item .ts-cb input[type="checkbox"] {
+    width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; border-radius: 50%;
+  }
+  .ts-item .ts-mod-tag {
+    font-size: 10px; font-weight: 600; color: #fff; white-space: nowrap;
+    padding: 1px 6px; border-radius: 4px; background: var(--text-tri);
+  }
+  .morning .ts-item .ts-mod-tag { background: rgba(255,149,0,0.65); }
+  .afternoon .ts-item .ts-mod-tag { background: rgba(0,122,255,0.55); }
+  .evening .ts-item .ts-mod-tag { background: rgba(88,86,214,0.55); }
+  .ts-item .ts-item-text { flex: 1; font-weight: 500; word-break: break-word; outline: none; border-radius: 4px; padding: 1px 3px; margin: -1px -3px; transition: all .15s; }
+  .ts-item .ts-item-text[contenteditable="false"] { cursor: grab; user-select: none; }
+  .ts-item .ts-item-text[contenteditable="true"] { cursor: text; background: var(--primary-soft); box-shadow: 0 0 0 2px rgba(0,122,255,0.15); }
+  .ts-item.ts-done { opacity: 0.4; }
+  .ts-item.ts-done .ts-item-text { text-decoration: line-through; text-decoration-color: var(--text-tri); }
+  .ts-item .ts-item-remove {
+    background: none; border: none; cursor: pointer; font-size: 11px;
+    color: var(--text-tri); opacity: 0; transition: all .15s; padding: 2px 4px; border-radius: 4px;
+  }
+  .ts-item:hover .ts-item-remove { opacity: 1; }
+  .ts-item .ts-item-remove:hover { color: var(--danger); background: rgba(255,59,48,0.08); }
+
+  .ts-item-actions {
+    display: flex; align-items: center; gap: 2px; flex-shrink: 0;
+  }
+  .ts-item-del {
+    border: none; background: none; cursor: pointer; font-size: 12px;
+    color: var(--text-tri); opacity: 0; transition: all .15s; padding: 2px 4px; border-radius: 4px;
+  }
+  .ts-item:hover .ts-item-del { opacity: 1; }
+  .ts-item .ts-item-del:hover { color: var(--danger); background: rgba(255,59,48,0.08); }
+  .ts-item-date {
+    border: none; background: none; cursor: pointer; font-size: 11px;
+    color: var(--text-tri); opacity: 0; transition: all .15s; padding: 2px 4px; border-radius: 4px;
+  }
+  .ts-item:hover .ts-item-date { opacity: 1; }
+  .ts-item .ts-item-date:hover { background: var(--primary-soft); }
+
+  .ts-add-btn {
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    padding: 6px 12px; margin: 4px 0;
+    background: transparent; border: 1px dashed var(--border-strong);
+    border-radius: var(--r-sm); cursor: pointer; font-size: 11px;
+    font-weight: 600; color: var(--text-tri); transition: all .2s var(--trans-smooth);
+    width: 100%;
+  }
+  .ts-add-btn:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+
+  .row.todo.draggable-todo { cursor: grab; }
+  .row.todo.draggable-todo:active { cursor: grabbing; }
+  .row.todo.dragging { opacity: 0.4; }
+
+  /* ========== ANIMATIONS ========== */
+  .fade-in { animation: fadeIn .35s var(--trans-smooth); }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .scale-in { animation: scaleIn .3s var(--trans-spring); }
+  @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+  /* ========== DATA MANAGEMENT BUTTONS ========== */
+  .data-mgmt { display: flex; gap: 6px; align-items: center; }
+  .data-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 10px; border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm); background: var(--card);
+    font-size: 11px; font-weight: 500; color: var(--text-sec);
+    cursor: pointer; transition: all .2s var(--trans-smooth);
+    white-space: nowrap;
+  }
+  .data-btn:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+  .data-btn .btn-icon { font-size: 13px; }
+  .data-btn-import { position: relative; overflow: hidden; }
+  .data-btn-import input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0;
+  }
+
+  /* ========== RESPONSIVE ========== */
+  @media (max-width:860px) {
+    .module-grid { grid-template-columns: 1fr; }
+    .header { flex-direction: column; gap: 12px; padding: 14px 20px; }
+    .main { padding: 16px; }
+    .day-add-bar { flex-wrap: wrap; }
+    .day-add-bar .add-label { width: 100%; }
+    .time-slots { grid-template-columns: 1fr; }
+    .data-mgmt { order: -1; width: 100%; justify-content: flex-end; }
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>📋 Letty 的日程管理</h1>
+  </div>
+  <div class="header-right">
+    <div class="data-mgmt">
+      <button class="data-btn" onclick="exportData()" title="导出所有数据为 JSON 备份"><span class="btn-icon">📥</span> 导出</button>
+      <label class="data-btn data-btn-import" title="从 JSON 备份文件恢复数据"><span class="btn-icon">📤</span> 导入<input type="file" accept=".json" onchange="importData(event)" /></label>
+    </div>
+    <div class="week-nav" id="weekNavBar">
+      <button class="week-nav-btn" onclick="navWeek(-1)" title="上一周">◀</button>
+      <span class="week-label" id="weekLabel"></span>
+      <button class="week-nav-btn" onclick="navWeek(1)" title="下一周">▶</button>
+      <button class="week-today-btn" onclick="navWeek(0)" title="回到本周">本周</button>
+    </div>
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="week" onclick="switchView('week')">周视图</button>
+      <button class="view-tab" data-view="day" onclick="switchView('day')">日视图</button>
+    </div>
+  </div>
+</div>
+
+<!-- 主内容区 -->
+<div class="main page-main" id="pageMain">
+  <div class="week-view active" id="weekView"></div>
+  <div class="day-view" id="dayView"></div>
+</div>
+
+<!-- 信息备注详情内页 -->
+<div class="main page-info-detail" id="pageInfoDetail"></div>
+
+<div class="toast" id="toast"></div>
+<div id="confirmRoot"></div>
+
+<!-- 添加模块弹窗 -->
+<div class="modal-overlay" id="addModuleModal">
+  <div class="modal-box">
+    <div class="modal-title">新增模块</div>
+    <div class="modal-subtitle">选择一个图标，给模块取个名字</div>
+    <div class="emoji-picker" id="emojiPicker"></div>
+    <input class="modal-input" id="moduleNameInput" placeholder="输入模块名称…" maxlength="20" />
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="closeAddModuleModal()">取消</button>
+      <button class="modal-btn confirm" id="addModuleConfirm" onclick="confirmAddModule()" disabled>添加</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// DATE UTILS
+// ================================================================
+const NOW = new Date();
+let weekOffset = 0;
+let dayOffset = 0;
+
+function getMonday(d) {
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
+  dt.setDate(diff);
+  dt.setHours(0,0,0,0);
+  return dt;
+}
+
+function fmtDate(d) { return String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0'); }
+
+function getCurrentWeekMonday() {
+  const mon = getMonday(NOW);
+  mon.setDate(mon.getDate() + weekOffset * 7);
+  return mon;
+}
+
+function getCurrentWeekDates() {
+  const mon = getCurrentWeekMonday();
+  const dates = [];
+  for(let i=0; i<7; i++) {
+    const d = new Date(mon);
+    d.setDate(mon.getDate()+i);
+    dates.push(fmtDate(d));
+  }
+  return dates;
+}
+
+function getWeekLabel() {
+  const mon = getCurrentWeekMonday();
+  const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+  let prefix = '';
+  if(weekOffset === 0) prefix = '本周 · ';
+  else if(weekOffset === -1) prefix = '上周 · ';
+  else if(weekOffset === 1) prefix = '下周 · ';
+  return `${prefix}${mon.getFullYear()}/${fmtDate(mon)} ~ ${fmtDate(sun)}`;
+}
+
+function getWeekLabelForMonday(monDate) {
+  const sun = new Date(monDate); sun.setDate(monDate.getDate()+6);
+  const thisMon = getMonday(NOW);
+  const diff = Math.round((monDate - thisMon) / (7*24*60*60*1000));
+  let prefix = '';
+  if(diff === 0) prefix = '本周';
+  else if(diff === -1) prefix = '上周';
+  else if(diff === 1) prefix = '下周';
+  else prefix = `${fmtDate(monDate)}周`;
+  return `${prefix} · ${fmtDate(monDate)} ~ ${fmtDate(sun)}`;
+}
+
+function getTodayStr() { return fmtDate(NOW); }
+
+function dateToObj(dateStr) {
+  const m = parseInt(dateStr.split('/')[0]) - 1;
+  const d = parseInt(dateStr.split('/')[1]);
+  return new Date(NOW.getFullYear(), m, d);
+}
+
+function infoInWeek(info, weekDates) {
+  if(!info.week) return false;
+  const monDate = dateToObj(info.week);
+  const mon = getMonday(monDate);
+  for(let i=0;i<7;i++) {
+    const d = new Date(mon);
+    d.setDate(mon.getDate()+i);
+    if(weekDates.includes(fmtDate(d))) return true;
+  }
+  return false;
+}
+
+// ================================================================
+// TIME AUTO-DETECTION
+// ================================================================
+function parseTimeFromText(text) {
+  const today = new Date();
+
+  if(/下周/.test(text)) {
+    const m2 = text.match(/下周([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])/);
+    if(m2) {
+      const weekDayMap = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'日':0,'天':0};
+      const targetDay = weekDayMap[m2[1]];
+      if(targetDay !== undefined) {
+        const nextMon = getMonday(today);
+        nextMon.setDate(nextMon.getDate() + 7);
+        const d = new Date(nextMon);
+        const offset = targetDay === 0 ? 6 : targetDay - 1;
+        d.setDate(nextMon.getDate() + offset);
+        return fmtDate(d);
+      }
+    }
+    const mon = getMonday(today);
+    mon.setDate(mon.getDate() + 7);
+    return fmtDate(mon);
+  }
+
+  const weekDayMap = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'日':0,'天':0};
+  let m = text.match(/(?:周|星期)([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])/);
+  if(m) {
+    const targetDay = weekDayMap[m[1]];
+    if(targetDay !== undefined) {
+      const mon = getMonday(today);
+      const d = new Date(mon);
+      const offset = targetDay === 0 ? 6 : targetDay - 1;
+      d.setDate(mon.getDate() + offset);
+      return fmtDate(d);
+    }
+  }
+
+  if(/今天/.test(text)) return fmtDate(today);
+  if(/明天/.test(text)) { const d=new Date(today);d.setDate(d.getDate()+1);return fmtDate(d); }
+  if(/后天/.test(text)) { const d=new Date(today);d.setDate(d.getDate()+2);return fmtDate(d); }
+  if(/大后天/.test(text)) { const d=new Date(today);d.setDate(d.getDate()+3);return fmtDate(d); }
+
+  m = text.match(/(\d{1,2})\/(\d{1,2})/);
+  if(m) return m[1].padStart(2,'0')+'/'+m[2].padStart(2,'0');
+
+  m = text.match(/(\d{1,2})月(\d{1,2})[日号]/);
+  if(m) return m[1].padStart(2,'0')+'/'+m[2].padStart(2,'0');
+
+  return null;
+}
+
+function detectDateFromItem(item) {
+  let detected = parseTimeFromText(item.text || '');
+  if(!detected && item.note) {
+    detected = parseTimeFromText(item.note);
+  }
+  return detected;
+}
+
+function normalizeRelativeTimeInText(text, detectedDate) {
+  if(!text || !detectedDate) return text;
+  const d = dateToObj(detectedDate);
+  const wdNames = ['日','一','二','三','四','五','六'];
+  const weekDay = '周' + wdNames[d.getDay()];
+
+  let result = text;
+  result = result.replace(/下周([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])/, weekDay);
+  result = result.replace(/下周(?![一二三四五六日天])/, weekDay);
+  result = result.replace(/大后天/, weekDay);
+  result = result.replace(/后天/, weekDay);
+  result = result.replace(/明天/, weekDay);
+  result = result.replace(/今天/, weekDay);
+
+  return result;
+}
+
+// ================================================================
+// DATA
+// ================================================================
+let _uid = 100;
+function uid() { return 'u' + (++_uid); }
+
+const DEFAULT_MODULES = [
+  {
+    id:'text-edit', name:'文字整理', emoji:'📝',
+    todos:[
+      {id:'t1',text:'基础版后续重点：无差异发送率低——为啥',status:'pending',note:'本周内问一下',date:''},
+      {id:'t2',text:'基础版后续重点：中间跳变——为啥',status:'pending',note:'本周内问一下',date:''},
+      {id:'t3',text:'研读一下算法文档',status:'pending',note:'本周内',date:''},
+    ],
+    infos:[
+      {id:'i1',text:'基础版：正在实验中，正在分析中，仅安卓实验',highlighted:false,week:'04/14'},
+      {id:'i2',text:'基础版 - 调用频率：16字+，然后一个分隔符整理一下',highlighted:false,week:'04/14'},
+      {id:'i3',text:'基础版 - 长文没弄',highlighted:false,week:'04/14'},
+      {id:'i4',text:'激进版：等待下一步分析（下周）',highlighted:false,week:'04/14'},
+    ]
+  },
+  {
+    id:'association', name:'联想', emoji:'💡',
+    todos:[
+      {id:'t5',text:'诗歌如何补充？',status:'pending',note:'准确率低于豆包，需要RAG解决',date:''},
+      {id:'t6',text:'新热内容补充',status:'pending',note:'',date:''},
+      {id:'t7',text:'研读一下算法文档',status:'pending',note:'下周，有空做',date:''},
+    ],
+    infos:[
+      {id:'i5',text:'当前：诗歌的准确率低于豆包，需要RAG解决',highlighted:false,week:'04/14'},
+    ]
+  },
+  {
+    id:'candidate', name:'候选', emoji:'🎯',
+    todos:[
+      {id:'t8',text:'研读一下算法文档',status:'pending',note:'',date:''},
+      {id:'t9',text:'开一下会',status:'pending',note:'',date:''},
+    ],
+    infos:[]
+  },
+  {
+    id:'voice', name:'语音', emoji:'🎙️',
+    todos:[
+      {id:'t10',text:'audiollm 实验',status:'progress',note:'',date:''},
+      {id:'t11',text:'0331后处理实验',status:'progress',note:'',date:''},
+      {id:'t12',text:'出字速度实验：客户端是否收到尾包已经加上了，准备重开实验',status:'pending',note:'',date:''},
+    ],
+    infos:[
+      {id:'i6',text:'方言2.5b(0203-punc-3p)的更新包括方言、bugfix（英文后处理sion）✅已上线',highlighted:false,week:'04/14'},
+    ]
+  },
+  {
+    id:'growth', name:'新增', emoji:'🚀',
+    todos:[
+      {id:'t13',text:'iOS 灰度 5%',status:'done',note:'',date:'04/15'},
+      {id:'t14',text:'iOS 灰度 20%',status:'pending',note:'',date:'04/16'},
+      {id:'t15',text:'iOS 灰度 100%',status:'pending',note:'',date:'04/19'},
+      {id:'t16',text:'推送红点 5%',status:'pending',note:'',date:'04/20'},
+      {id:'t17',text:'推送红点 20%',status:'pending',note:'',date:'04/21'},
+      {id:'t18',text:'推送红点 100%',status:'pending',note:'',date:'04/22'},
+      {id:'t19',text:'红点到期消失',status:'pending',note:'0422的8天后，用户没点击时红点也会到期消失，结束本轮推广',date:'04/30'},
+    ],
+    infos:[
+      {id:'i7',text:'iOS灰度计划辛苦iga看看是否ok，Android要等T3发布，也尽快对齐',highlighted:false,week:'04/14'},
+    ]
+  },
+  {
+    id:'mobile', name:'移动端版本', emoji:'📱',
+    todos:[
+      {id:'t20',text:'常用语扩长度的进度问一下',status:'pending',note:'',date:''},
+    ],
+    infos:[
+      {id:'i8',text:'下周灰度',highlighted:false,week:'04/14'},
+    ]
+  },
+  {
+    id:'pc', name:'PC端版本', emoji:'💻',
+    todos:[
+      {id:'t21',text:'文字整理的进展问一下',status:'pending',note:'',date:''},
+    ],
+    infos:[]
+  }
+];
+
+let MODULES = JSON.parse(JSON.stringify(DEFAULT_MODULES));
+
+// ================================================================
+// SUPABASE CLOUD STORAGE
+// ================================================================
+const SUPABASE_URL = 'https://kdzwecziebiqxvviqmfa.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkendlY3ppZWJpcXh2dmlxbWZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzOTI3NzYsImV4cCI6MjA5MTk2ODc3Nn0.WDZjzEQ1fIz_YSMy02rKGeCKx9f_a-5mQqcUsJmy1fU';
+let _supabaseClient = null;
+let _cloudAvailable = false;
+try {
+  if(window.supabase && window.supabase.createClient) {
+    _supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    _cloudAvailable = true;
+    console.log('✅ Supabase SDK loaded');
+  } else {
+    console.warn('⚠️ Supabase SDK not available, falling back to localStorage only');
+  }
+} catch(e) {
+  console.warn('⚠️ Supabase init failed:', e);
+}
+const DATA_ROW_ID = 'letty_main';
+let _cloudSyncPending = false;
+let _cloudSyncTimer = null;
+let _cloudReady = false;
+
+// Sync status indicator — always visible in header
+let _lastSyncStatus = 'init';
+function showSyncStatus(status) {
+  _lastSyncStatus = status;
+  let el = document.getElementById('syncStatus');
+  if(!el) {
+    // Insert into the header bar, next to the title
+    const headerLeft = document.querySelector('.header-left');
+    if(headerLeft) {
+      el = document.createElement('div');
+      el.id = 'syncStatus';
+      el.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;margin-left:12px;transition:all .3s ease;cursor:default;white-space:nowrap;vertical-align:middle;';
+      headerLeft.appendChild(el);
+    } else {
+      // Fallback: fixed position
+      el = document.createElement('div');
+      el.id = 'syncStatus';
+      el.style.cssText = 'position:fixed;top:14px;left:280px;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;z-index:200;transition:all .3s ease;cursor:default;white-space:nowrap;';
+      document.body.appendChild(el);
+    }
+  }
+  if(status === 'saving') {
+    el.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⟳</span> 同步中';
+    el.style.background = 'rgba(0,122,255,0.1)'; el.style.color = '#007aff';
+  } else if(status === 'saved') {
+    el.innerHTML = '☁️ 已同步';
+    el.style.background = 'rgba(52,199,89,0.1)'; el.style.color = '#34c759';
+  } else if(status === 'error') {
+    el.innerHTML = '⚠️ 同步失败';
+    el.style.background = 'rgba(255,59,48,0.1)'; el.style.color = '#ff3b30';
+    el.title = '云端同步失败，数据已本地保存。点击重试。';
+    el.onclick = () => syncToCloud();
+  } else if(status === 'offline') {
+    el.innerHTML = '📴 离线';
+    el.style.background = 'rgba(255,149,0,0.1)'; el.style.color = '#ff9500';
+    el.title = '离线模式，数据仅保存在本地';
+  }
+  // Add spin animation if not exists
+  if(!document.getElementById('syncSpinStyle')) {
+    const style = document.createElement('style');
+    style.id = 'syncSpinStyle';
+    style.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+    document.head.appendChild(style);
+  }
+}
+
+// Debounced cloud save — waits 500ms after last change then syncs
+function scheduleCloudSync() {
+  if(_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
+  _cloudSyncTimer = setTimeout(async () => {
+    await syncToCloud();
+  }, 500);
+}
+
+async function syncToCloud() {
+  if(!_cloudAvailable || !_supabaseClient) {
+    showSyncStatus('offline');
+    return;
+  }
+  try {
+    showSyncStatus('saving');
+    const payload = {
+      id: DATA_ROW_ID,
+      modules: MODULES,
+      time_slots: JSON.parse(localStorage.getItem(SLOT_KEY) || '{}'),
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await _supabaseClient
+      .from('schedule_data')
+      .upsert(payload, { onConflict: 'id' });
+    if(error) throw error;
+    showSyncStatus('saved');
+  } catch(e) {
+    console.error('Cloud sync failed:', e);
+    showSyncStatus('error');
+  }
+}
+
+async function loadFromCloud() {
+  if(!_cloudAvailable || !_supabaseClient) {
+    console.log('Cloud not available, using localStorage only');
+    return false;
+  }
+  try {
+    const { data, error } = await _supabaseClient
+      .from('schedule_data')
+      .select('*')
+      .eq('id', DATA_ROW_ID)
+      .single();
+    if(error) {
+      if(error.code === 'PGRST116') {
+        // No row yet — first time use, will create on first save
+        console.log('No cloud data yet, using local data');
+        return false;
+      }
+      throw error;
+    }
+    if(data) {
+      if(data.modules) {
+        MODULES = data.modules;
+        // Also update localStorage cache
+        localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES }));
+      }
+      if(data.time_slots) {
+        localStorage.setItem(SLOT_KEY, JSON.stringify(data.time_slots));
+      }
+      return true;
+    }
+    return false;
+  } catch(e) {
+    console.error('Cloud load failed:', e);
+    showSyncStatus('offline');
+    return false;
+  }
+}
+
+// ================================================================
+// STATE (localStorage cache + Supabase cloud)
+// ================================================================
+let currentView = 'week';
+const STORE_KEY = 'letty_schedule_v3';
+const SLOT_KEY = 'letty_time_slots';
+
+function loadState() {
+  // Load from localStorage first (fast, offline-capable)
+  const raw = localStorage.getItem(STORE_KEY);
+  if (!raw) return;
+  try {
+    const saved = JSON.parse(raw);
+    if (saved.modules) MODULES = saved.modules;
+  } catch(e) {}
+  // Restore _uid counter to avoid ID collisions with existing data
+  restoreUidCounter();
+}
+
+function restoreUidCounter() {
+  let maxId = _uid;
+  MODULES.forEach(m => {
+    m.todos.forEach(t => {
+      const n = parseInt(t.id.replace('u',''), 10);
+      if(!isNaN(n) && n > maxId) maxId = n;
+    });
+    if(m.infos) m.infos.forEach(i => {
+      const n = parseInt(i.id.replace('u',''), 10);
+      if(!isNaN(n) && n > maxId) maxId = n;
+    });
+  });
+  _uid = maxId;
+}
+
+function saveState() {
+  // Always save to localStorage (instant, offline)
+  localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES }));
+  // Schedule async cloud sync
+  scheduleCloudSync();
+}
+
+// ================================================================
+// DATA EXPORT / IMPORT (backup & restore)
+// ================================================================
+function exportData() {
+  const data = {
+    _format: 'letty_schedule_backup',
+    _version: 3,
+    _exportedAt: new Date().toISOString(),
+    modules: MODULES,
+    timeSlots: JSON.parse(localStorage.getItem(SLOT_KEY) || '{}')
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const d = new Date();
+  a.download = `letty-schedule-backup-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('✅ 数据已导出');
+}
+
+function importData(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data._format !== 'letty_schedule_backup') {
+        toast('❌ 文件格式不正确'); return;
+      }
+      // Confirm before overwriting
+      if (!confirm('导入将覆盖当前所有数据，确定继续？\n\n建议先导出当前数据作为备份。')) return;
+      if (data.modules) {
+        MODULES = data.modules;
+        saveState();
+      }
+      if (data.timeSlots) {
+        localStorage.setItem(SLOT_KEY, JSON.stringify(data.timeSlots));
+      }
+      // Restore _uid counter
+      let maxId = _uid;
+      MODULES.forEach(m => {
+        m.todos.forEach(t => { const n=parseInt(t.id.replace('u',''),10); if(!isNaN(n)&&n>maxId) maxId=n; });
+        if(m.infos) m.infos.forEach(i => { const n=parseInt(i.id.replace('u',''),10); if(!isNaN(n)&&n>maxId) maxId=n; });
+      });
+      _uid = maxId;
+      // Re-render
+      if (currentView === 'week') renderWeek(); else renderDay();
+      // Sync imported data to cloud
+      scheduleCloudSync();
+      toast('✅ 数据已导入恢复');
+    } catch(err) {
+      toast('❌ 文件解析失败：' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  evt.target.value = ''; // allow re-selecting same file
+}
+
+// ================================================================
+// UTILS
+// ================================================================
+function toast(msg) { const e=document.getElementById('toast');e.textContent=msg;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2200); }
+function findMod(modId) { return MODULES.find(m=>m.id===modId); }
+function findTodo(todoId) { for(const m of MODULES) { const t=m.todos.find(x=>x.id===todoId); if(t) return {mod:m,todo:t}; } return null; }
+function findInfo(infoId) { for(const m of MODULES) { const i=m.infos.find(x=>x.id===infoId); if(i) return {mod:m,info:i}; } return null; }
+function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
+
+// Strip leading time expressions for day view display (data unchanged)
+function stripTimePrefix(text) {
+  if(!text) return text;
+  // Remove leading day references: 周五、今天、明天、后天、下周一 etc.
+  let s = text.replace(/^(下周[一二三四五六日天]|周[一二三四五六日天]|今天|明天|后天|大后天)\s*/g, '');
+  // Also remove mid-sentence standalone day refs followed by time/action
+  s = s.replace(/(：|:)\s*(下周[一二三四五六日天]|周[一二三四五六日天]|今天|明天|后天|大后天)\s*/g, '$1');
+  return s || text; // fallback to original if everything got stripped
+}
+
+// Textarea 自动撑高（优化版：减少 reflow）
+function autoResizeTextarea(el) {
+  if (!el.value || el.value.trim() === '') {
+    el.style.height = '24px';
+    return;
+  }
+  el.style.height = '24px';
+  const sh = el.scrollHeight;
+  el.style.height = Math.max(24, sh) + 'px';
+}
+
+// 页面渲染后批量初始化所有 textarea 高度（用 rAF 避免阻塞滚动）
+function initAllTextareas() {
+  requestAnimationFrame(() => {
+    const els = document.querySelectorAll('.info-note-area, .i-text-area');
+    // 批量写
+    els.forEach(el => {
+      if (!el.value || el.value.trim() === '') {
+        el.style.height = '24px';
+      } else {
+        el.style.height = '24px';
+      }
+    });
+    // 批量读 + 写（减少交替 reflow）
+    requestAnimationFrame(() => {
+      els.forEach(el => {
+        if (el.value && el.value.trim() !== '') {
+          el.style.height = Math.max(24, el.scrollHeight) + 'px';
+        }
+      });
+    });
+  });
+}
+
+// ================================================================
+// CONFIRM DIALOG
+// ================================================================
+let _confirmResolve = null;
+function showConfirm(msg) {
+  return new Promise(resolve => {
+    // If a confirm is already open, reject the previous one
+    if(_confirmResolve) {
+      _confirmResolve(false);
+      _confirmResolve = null;
+    }
+    _confirmResolve = resolve;
+    const root = document.getElementById('confirmRoot');
+    root.innerHTML = `
+      <div class="confirm-overlay" id="cfOverlay">
+        <div class="confirm-box scale-in">
+          <p>${msg}</p>
+          <div class="confirm-btns">
+            <button class="btn-cancel" id="cfCancel">取消</button>
+            <button class="btn-danger" id="cfOk">确认删除</button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('cfOverlay').onclick = (e) => {
+      if(e.target.id === 'cfOverlay') { root.innerHTML=''; if(_confirmResolve){_confirmResolve(false);_confirmResolve=null;} }
+    };
+    document.getElementById('cfCancel').onclick = () => { root.innerHTML=''; if(_confirmResolve){_confirmResolve(false);_confirmResolve=null;} };
+    document.getElementById('cfOk').onclick = () => { root.innerHTML=''; if(_confirmResolve){_confirmResolve(true);_confirmResolve=null;} };
+  });
+}
+
+// ================================================================
+// ADD MODULE — EMOJI PICKER + MODAL
+// ================================================================
+const EMOJI_OPTIONS = [
+  '📝','💡','🎯','🎙️','🚀','📱','💻','🔬',
+  '📊','🎨','🤖','📦','🔧','🌐','📈','🎵',
+  '📚','💬','🛡️','⚡','🧪','🏷️','📮','🧩',
+];
+let selectedEmoji = '';
+
+function openAddModuleModal() {
+  selectedEmoji = '';
+  document.getElementById('moduleNameInput').value = '';
+  document.getElementById('addModuleConfirm').disabled = true;
+
+  // Render emoji picker
+  const picker = document.getElementById('emojiPicker');
+  picker.innerHTML = EMOJI_OPTIONS.map(e =>
+    `<div class="emoji-opt" data-emoji="${e}" onclick="selectEmoji(this,'${e}')">${e}</div>`
+  ).join('');
+
+  const modal = document.getElementById('addModuleModal');
+  modal.classList.add('active');
+  setTimeout(() => document.getElementById('moduleNameInput').focus(), 350);
+}
+
+function closeAddModuleModal() {
+  document.getElementById('addModuleModal').classList.remove('active');
+}
+
+function selectEmoji(el, emoji) {
+  document.querySelectorAll('.emoji-opt').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedEmoji = emoji;
+  validateAddModule();
+}
+
+function validateAddModule() {
+  const name = document.getElementById('moduleNameInput').value.trim();
+  document.getElementById('addModuleConfirm').disabled = !(selectedEmoji && name.length > 0);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('moduleNameInput');
+  if(input) input.addEventListener('input', validateAddModule);
+});
+
+function confirmAddModule() {
+  const name = document.getElementById('moduleNameInput').value.trim();
+  if(!selectedEmoji || !name) return;
+
+  const newMod = {
+    id: 'mod_' + Date.now(),
+    name: name,
+    emoji: selectedEmoji,
+    todos: [],
+    infos: []
+  };
+  MODULES.push(newMod);
+  saveState();
+  closeAddModuleModal();
+  renderWeek();
+  toast(`✅ 已添加「${selectedEmoji} ${name}」模块`);
+}
+
+// Close modal on overlay click
+document.addEventListener('click', (e) => {
+  const modal = document.getElementById('addModuleModal');
+  if(e.target === modal) closeAddModuleModal();
+});
+
+// Close modal on ESC
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape') {
+    const modal = document.getElementById('addModuleModal');
+    if(modal.classList.contains('active')) closeAddModuleModal();
+  }
+});
+
+// ================================================================
+// WEEK NAVIGATION
+// ================================================================
+function navWeek(dir) {
+  if(dir === 0) weekOffset = 0;
+  else weekOffset += dir;
+  document.getElementById('weekLabel').textContent = getWeekLabel();
+  renderWeek();
+}
+
+// ================================================================
+// RENDER — WEEK
+// ================================================================
+function renderWeek() {
+  const c = document.getElementById('weekView');
+  const todayStr = getTodayStr();
+  const weekDates = getCurrentWeekDates();
+
+  let h = '<div class="module-grid fade-in">';
+
+  MODULES.forEach(mod => {
+    const allTodos = mod.todos;
+    const relevantTodos = allTodos.filter(t => {
+      if(t.date) {
+        if(weekDates.includes(t.date)) return true;
+        if(weekOffset === 0 && t.status !== 'done') {
+          const itemDate = dateToObj(t.date);
+          const mon = getCurrentWeekMonday();
+          if(itemDate < mon) return true;
+        }
+        return false;
+      }
+      return weekOffset === 0;
+    });
+
+    const notDone = relevantTodos.filter(t=>t.status!=='done');
+    const done = relevantTodos.filter(t=>t.status==='done');
+
+    const weekInfos = mod.infos.filter(i => infoInWeek(i, weekDates));
+    const otherInfos = mod.infos.filter(i => !infoInWeek(i, weekDates));
+    const totalInfos = mod.infos.length;
+
+    h += `<div class="module-card">`;
+    h += `<div class="module-head">`;
+    h += `<div class="module-title"><span class="m-emoji">${mod.emoji}</span><span class="m-name">${mod.name}</span></div>`;
+    h += `<div class="m-badges">`;
+    if(notDone.length) h+=`<span class="badge todo-b">${notDone.length} 待办</span>`;
+    if(done.length) h+=`<span class="badge done-b">${done.length} 完成</span>`;
+    if(weekInfos.length) h+=`<span class="badge info-b">${weekInfos.length} 信息</span>`;
+    h += `</div></div>`;
+
+    h += `<div class="module-body" id="body-${mod.id}">`;
+
+    // TODOS
+    h += `<div class="sec-label"><span>📌 待办事项</span><button class="sec-add-btn" onclick="event.stopPropagation();addTodo('${mod.id}')">+ 新增</button></div>`;
+    notDone.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'week'); });
+    if(done.length) {
+      h += `<div class="sec-label" style="font-size:10px;padding:5px 20px"><span>✅ 已完成</span></div>`;
+      done.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'week'); });
+    }
+
+    // INFOS
+    if(weekInfos.length) {
+      h += `<div class="sec-label"><span>💬 信息备注</span><button class="sec-add-btn" onclick="event.stopPropagation();addInfo('${mod.id}')">+ 新增</button></div>`;
+      weekInfos.forEach(i => { h += infoRowHTML(i); });
+    } else {
+      h += `<div class="sec-label"><span>💬 信息备注</span><button class="sec-add-btn" onclick="event.stopPropagation();addInfo('${mod.id}')">+ 新增</button></div>`;
+    }
+
+    if(otherInfos.length > 0) {
+      h += `<div class="more-info-btn" onclick="openInfoDetail('${mod.id}')">📂 查看全部信息备注（共 ${totalInfos} 条） →</div>`;
+    }
+
+    h += `</div></div>`;
+  });
+
+  // Add Module Card — 最后一张
+  h += `<div class="add-module-card" onclick="openAddModuleModal()">`;
+  h += `<div class="add-icon">+</div>`;
+  h += `<div class="add-text">新增模块</div>`;
+  h += `</div>`;
+
+  h += '</div>';
+  c.innerHTML = h;
+  setTimeout(initAllTextareas, 10);
+}
+
+function todoRowHTML(t, weekDates, todayStr, context, hiddenSlotIds, slotLabel) {
+  context = context || 'week';
+  hiddenSlotIds = hiddenSlotIds || [];
+  const isDone = t.status==='done';
+  const isInSlot = hiddenSlotIds.includes(t.id);
+
+  // In day view, hide todos that are already assigned to a time slot
+  if(context === 'day' && !isDone && isInSlot) {
+    return '';
+  }
+
+  const isToday = t.date && t.date === todayStr;
+  const isThisWeek = t.date && weekDates && weekDates.includes(t.date) && !isToday;
+  const cls = ['row','todo'];
+  if(isDone) cls.push('completed');
+
+  // Only highlight in week view
+  if(context === 'week') {
+    if(isToday && !isDone) cls.push('today-hl');
+    else if(isThisWeek && !isDone) cls.push('this-week-hl');
+  }
+
+  // In day view, make items draggable (both assigned and unassigned)
+  if(context === 'day' && !isDone) cls.push('draggable-todo');
+
+  let meta = '';
+  if(t.date && context === 'week') {
+    if(isToday) {
+      meta += `<span class="tag date-tag" onclick="openDatePicker('${t.id}',event)" style="cursor:pointer" title="点击修改日期">📍 今天 ${t.date}</span>`;
+    } else {
+      const dt = dateToObj(t.date);
+      const wd = ['日','一','二','三','四','五','六'];
+      meta += `<span class="tag date-tag" onclick="openDatePicker('${t.id}',event)" style="cursor:pointer" title="点击修改日期">${t.date} 周${wd[dt.getDay()]}</span>`;
+    }
+  }
+  // No date + week view → show assign date button
+  if(!t.date && context === 'week' && !isDone) {
+    meta += `<span class="tag no-date-tag" onclick="openDatePicker('${t.id}',event)">📅 分配日期</span>`;
+  }
+  if(t.autoDate && context === 'week') {
+    meta += `<span class="tag auto-date-tag">🔍 自动识别</span>`;
+  }
+  if(t.status==='progress') meta += `<span class="tag prog-tag">进行中</span>`;
+  if(t.note) meta += `<span class="tag note-tag">${esc(t.note)}</span>`;
+
+  const draggable = (context === 'day' && !isDone) ? ` draggable="true" ondragstart="onTodoDragStart(event,'${t.id}')"` : '';
+  // In day view with draggable: default contenteditable=false, double-click to edit
+  const isDayDraggable = (context === 'day' && !isDone);
+  const cedit = isDayDraggable ? 'false' : 'true';
+  const editTrigger = isDayDraggable
+    ? `ondblclick="enableRowEdit(this,'${t.id}')" onblur="disableRowEdit(this,'${t.id}')"`
+    : `onblur="editTodoText('${t.id}',this.textContent)"`;
+
+  return `
+    <div class="${cls.join(' ')}" data-id="${t.id}"${draggable}>
+      <div class="row-cb"><input type="checkbox" ${isDone?'checked':''} onchange="toggleTodo('${t.id}',this.checked)"/></div>
+      <div class="row-body">
+        <div class="row-text" contenteditable="${cedit}" ${editTrigger}>${esc(context === 'day' ? stripTimePrefix(t.text) : t.text)}</div>
+        ${meta?`<div class="row-meta">${meta}</div>`:''}
+      </div>
+      <div class="row-actions">
+        ${context === 'day' && !isDone ? `<button class="act-btn date-btn" onclick="openDatePickerDay('${t.id}',event)" title="修改日期">📅</button>` : ''}
+        <button class="act-btn del" onclick="delTodo('${t.id}')" title="删除">✕</button>
+      </div>
+    </div>`;
+}
+
+function infoRowHTML(i) {
+  return `
+    <div class="row info ${i.highlighted?'highlighted':''}" data-id="${i.id}" data-type="info">
+      <div class="info-dot"></div>
+      <div class="row-body">
+        <textarea class="info-note-area" rows="1" onblur="editInfoText('${i.id}',this.value)" oninput="autoResizeTextarea(this)" placeholder="写点什么…">${esc(i.text)}</textarea>
+      </div>
+      <div class="row-actions">
+        <button class="act-btn ${i.highlighted?'hl-on':''}" onclick="hlInfo('${i.id}')" title="高亮">💡</button>
+        <button class="act-btn del" onclick="delInfo('${i.id}')" title="删除">✕</button>
+      </div>
+    </div>`;
+}
+
+// ================================================================
+// RENDER — DAY
+// ================================================================
+function renderDay() {
+  const c = document.getElementById('dayView');
+  const d = new Date(NOW); d.setDate(d.getDate()+dayOffset);
+  const ds = fmtDate(d);
+  const wd = ['日','一','二','三','四','五','六'];
+  const todayStr = getTodayStr();
+  const weekDates = getCurrentWeekDates();
+
+  let h = '';
+
+  // Day Header
+  h += `<div class="day-header fade-in"><div><div class="day-date">${d.getMonth()+1}月${d.getDate()}日</div><div class="day-sub">星期${wd[d.getDay()]}${dayOffset===0?' · 今天':''}</div></div><div class="day-nav"><button onclick="navDay(-1)">◀</button><button onclick="navDay(0)" title="回到今天">●</button><button onclick="navDay(1)">▶</button></div></div>`;
+
+  // Quick Add Bar
+  h += `<div class="day-add-bar fade-in">`;
+  h += `<span class="add-label">➕ 快速添加</span>`;
+  h += `<select class="day-add-select" id="dayAddModule">`;
+  MODULES.forEach(mod => {
+    h += `<option value="${mod.id}">${mod.emoji} ${mod.name}</option>`;
+  });
+  h += `</select>`;
+  h += `<input class="day-add-input" id="dayAddInput" placeholder="输入待办内容，回车添加…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTodoInDay();}"/>`;
+  h += `<button class="day-add-submit" onclick="addTodoInDay()">添加</button>`;
+  h += `</div>`;
+
+  // Collect all todos for this day grouped by module
+  let found = false;
+  const modGroups = [];
+  MODULES.forEach(mod => {
+    const items = mod.todos.filter(t => t.date === ds);
+    if(!items.length) return;
+    found = true;
+    modGroups.push({ mod, items });
+  });
+
+  // Get time slot data and build hidden IDs set (todos already placed in slots)
+  const slotData = getTimeSlots(ds);
+  // Clean slot data: remove duplicate IDs and IDs referencing non-existent todos
+  let slotDirty = false;
+  ['morning','afternoon','evening'].forEach(k => {
+    if(!slotData[k]) { slotData[k] = []; return; }
+    const seen = new Set();
+    slotData[k] = slotData[k].filter(id => {
+      if(seen.has(id)) { slotDirty = true; return false; }
+      seen.add(id);
+      if(!findTodo(id)) { slotDirty = true; return false; }
+      return true;
+    });
+  });
+  if(slotDirty) setTimeSlots(ds, slotData);
+  const allSlotIds = new Set([...slotData.morning, ...slotData.afternoon, ...slotData.evening]);
+
+  // ---- Today's Todo List ----
+  const allDayTodos = modGroups.flatMap(g => g.items);
+  const unassignedNotDone = allDayTodos.filter(t => !allSlotIds.has(t.id) && t.status !== 'done');
+  const doneTodos = allDayTodos.filter(t => t.status === 'done' && !allSlotIds.has(t.id));
+  const showTodoSection = unassignedNotDone.length > 0 || doneTodos.length > 0 || !found;
+
+  h += `<div class="day-section fade-in" id="todoListDropZone" ondragover="onTodoListDragOver(event)" ondragleave="onTodoListDragLeave(event)" ondrop="onTodoListDrop(event,'${ds}')">`;
+  h += `<div class="day-section-head">`;
+  h += `<div class="day-section-head-left"><span style="font-size:18px">📋</span><span class="m-name" style="font-size:14px;font-weight:700">今日待办</span></div>`;
+  if(unassignedNotDone.length) h += `<span class="badge todo-b">${unassignedNotDone.length} 待办</span>`;
+  if(doneTodos.length) h += `<span class="badge done-b">${doneTodos.length} 完成</span>`;
+  h += `</div>`;
+
+  if(!found) {
+    h += `<div style="text-align:center;padding:24px 0;color:var(--text-tri);font-size:13px">暂无待办，在上方快速添加栏中新增</div>`;
+  } else if(unassignedNotDone.length === 0 && doneTodos.length === 0) {
+    h += `<div style="text-align:center;padding:16px 0;color:var(--text-tri);font-size:13px">✅ 全部已安排到时间段<br><span style="font-size:11px">从下方时间段拖回此处可取消安排</span></div>`;
+  } else {
+    modGroups.forEach(grp => {
+      const visibleNotDone = grp.items.filter(t => !allSlotIds.has(t.id) && t.status !== 'done');
+      const visibleDone = grp.items.filter(t => t.status === 'done' && !allSlotIds.has(t.id));
+      if(visibleNotDone.length === 0 && visibleDone.length === 0) return;
+
+      h += `<div class="sec-label" style="font-size:10px;padding:5px 20px"><span>${grp.mod.emoji} ${grp.mod.name}</span><button class="sec-add-btn" onclick="event.stopPropagation();addTodoInDayForModule('${grp.mod.id}')">+ 新增</button></div>`;
+      visibleNotDone.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'day'); });
+      visibleDone.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'day'); });
+    });
+  }
+  h += `</div>`;
+
+  // ---- Time Planner (早中晚) ----
+  h += `<div class="time-planner-title fade-in">⏰ 时间规划 <span class="tp-sub">拖拽待办到下方时段 · 也可从时段拖回待办区</span></div>`;
+  h += `<div class="time-slots fade-in">`;
+
+  const slotsConfig = [
+    { key: 'morning', icon: '🌅', label: '上午', time: '09:00 - 12:00', cls: 'morning' },
+    { key: 'afternoon', icon: '☀️', label: '下午', time: '14:00 - 18:00', cls: 'afternoon' },
+    { key: 'evening', icon: '🌙', label: '晚上', time: '19:00 - 22:00', cls: 'evening' },
+  ];
+
+  slotsConfig.forEach(slot => {
+    const ids = slotData[slot.key] || [];
+    const items = ids.map(todoId => {
+      const r = findTodo(todoId);
+      if(!r) return null;
+      return { id: todoId, text: r.todo.text, emoji: r.mod.emoji, modName: r.mod.name, status: r.todo.status };
+    }).filter(Boolean);
+
+    h += `<div class="time-slot ${slot.cls}" ondragover="onSlotDragOver(event)" ondragleave="onSlotDragLeave(event)" ondrop="onSlotDrop(event,'${slot.key}','${ds}')">`;
+    h += `<div class="ts-header"><span class="ts-icon">${slot.icon}</span><span class="ts-label">${slot.label}</span><span class="ts-time">${slot.time}</span>`;
+    if(items.length) h += `<span class="ts-count">${items.length}</span>`;
+    h += `</div><div class="ts-body">`;
+
+    if(!items.length) {
+      h += `<div class="ts-empty"><div class="drop-icon">📥</div>拖拽待办到这里<button class="ts-add-btn" style="margin-top:8px" onclick="addTodoInSlot('${slot.key}','${ds}')">+ 新增待办</button></div>`;
+    } else {
+      items.forEach(item => {
+        const isDone = item.status === 'done';
+        const doneCls = isDone ? ' ts-done' : '';
+        h += `<div class="ts-item${doneCls}" draggable="true" ondragstart="onTodoDragStart(event,'${item.id}')" data-id="${item.id}">`;
+        h += `<div class="ts-cb"><input type="checkbox" ${isDone?'checked':''} onchange="toggleTodo('${item.id}',this.checked)"/></div>`;
+        h += `<span class="ts-mod-tag" onclick="switchTodoModule('${item.id}',this,event)" style="cursor:pointer" title="点击切换项目">${item.emoji} ${item.modName}</span>`;
+        h += `<span class="ts-item-text" contenteditable="false" ondblclick="enableSlotEdit(this,'${item.id}')" onblur="disableSlotEdit(this,'${item.id}')">${esc(stripTimePrefix(item.text))}</span>`;
+        h += `<div class="ts-item-actions">`;
+        h += `<button class="ts-item-date" onclick="openDatePickerSlot('${item.id}',event)" title="修改日期">📅</button>`;
+        h += `<button class="ts-item-remove" onclick="removeFromSlot('${item.id}','${slot.key}','${ds}')" title="移回待办区">↩</button>`;
+        h += `<button class="ts-item-del" onclick="delTodoFromSlot('${item.id}','${slot.key}','${ds}')" title="删除">✕</button>`;
+        h += `</div>`;
+        h += `</div>`;
+      });
+    }
+    // Add button inside each time slot
+    h += `<button class="ts-add-btn" onclick="addTodoInSlot('${slot.key}','${ds}')">+ 新增待办</button>`;
+    h += `</div></div>`;
+  });
+
+  h += `</div>`;
+  c.innerHTML = h;
+}
+
+// Add todo in day view — quick bar
+function addTodoInDay() {
+  const input = document.getElementById('dayAddInput');
+  const select = document.getElementById('dayAddModule');
+  const text = input.value.trim();
+  if(!text) { input.focus(); return; }
+
+  const modId = select.value;
+  const mod = findMod(modId);
+  if(!mod) return;
+
+  const d = new Date(NOW); d.setDate(d.getDate()+dayOffset);
+  const ds = fmtDate(d);
+
+  const newId = uid();
+  const newTodo = {id:newId, text:text, status:'pending', note:'', date:ds};
+
+  // Auto-detect date from text (might override)
+  const detected = detectDateFromItem(newTodo);
+  if(detected) {
+    newTodo.date = detected;
+    newTodo.autoDate = true;
+    const normalized = normalizeRelativeTimeInText(newTodo.text, detected);
+    if(normalized !== newTodo.text) newTodo.text = normalized;
+  }
+
+  mod.todos.push(newTodo);
+  saveState();
+  input.value = '';
+  renderDay();
+  toast(`✅ 已添加到「${mod.emoji} ${mod.name}」`);
+}
+
+// Add todo in day view — per module
+function addTodoInDayForModule(modId) {
+  const mod = findMod(modId);
+  if(!mod) return;
+  const d = new Date(NOW); d.setDate(d.getDate()+dayOffset);
+  const ds = fmtDate(d);
+
+  const newId = uid();
+  mod.todos.push({id:newId, text:'新待办事项', status:'pending', note:'', date:ds});
+  saveState();
+  renderDay();
+  setTimeout(()=>{
+    const el = document.querySelector(`[data-id="${newId}"] .row-text`);
+    if(el) {
+      enableRowEdit(el, newId);
+    }
+  }, 50);
+  toast('➕ 已添加待办');
+}
+
+// ================================================================
+// INFO DETAIL PAGE
+// ================================================================
+let infoDetailModId = null;
+
+function openInfoDetail(modId) {
+  const mod = findMod(modId);
+  if(!mod) return;
+  infoDetailModId = modId;
+  document.body.classList.add('show-info-detail');
+  renderInfoDetailPage(mod);
+  window.scrollTo(0,0);
+}
+
+function closeInfoDetail() {
+  document.body.classList.remove('show-info-detail');
+  infoDetailModId = null;
+  renderWeek();
+}
+
+function renderInfoDetailPage(mod) {
+  const c = document.getElementById('pageInfoDetail');
+  const allInfos = mod.infos;
+
+  let h = '';
+
+  h += `<div class="info-detail-header fade-in">`;
+  h += `<button class="info-back-btn" onclick="closeInfoDetail()">◀</button>`;
+  h += `<div class="info-detail-title">`;
+  h += `<span class="big-emoji">${mod.emoji}</span>`;
+  h += `<span class="title-name">${mod.name}</span>`;
+  h += `<span class="title-sub">· 全部信息备注（${allInfos.length} 条）</span>`;
+  h += `</div>`;
+  h += `<button class="info-detail-add" onclick="addInfoInDetail('${mod.id}')">+ 添加信息</button>`;
+  h += `</div>`;
+
+  if(!allInfos.length) {
+    h += `<div class="info-empty-page fade-in"><div class="big-icon">📝</div><div>暂无信息备注</div></div>`;
+    c.innerHTML = h;
+    return;
+  }
+
+  const weekGroups = {};
+  allInfos.forEach(i => {
+    const wk = i.week || '04/14';
+    const monDate = getMonday(dateToObj(wk));
+    const key = fmtDate(monDate);
+    if(!weekGroups[key]) weekGroups[key] = { monday: monDate, items: [] };
+    weekGroups[key].items.push(i);
+  });
+
+  const sortedKeys = Object.keys(weekGroups).sort((a,b) => weekGroups[b].monday - weekGroups[a].monday);
+
+  sortedKeys.forEach(key => {
+    const grp = weekGroups[key];
+    const label = getWeekLabelForMonday(grp.monday);
+
+    h += `<div class="info-wk-card fade-in">`;
+    h += `<div class="info-wk-header"><span>${label}</span><span class="range">${grp.items.length} 条</span></div>`;
+    h += `<div class="info-wk-body">`;
+
+    grp.items.forEach(i => {
+      h += `<div class="info-row ${i.highlighted?'highlighted':''}" data-id="${i.id}">`;
+      h += `<div class="dot"></div>`;
+      h += `<textarea class="i-text i-text-area" rows="1" onblur="editInfoInDetail('${i.id}',this.value)" oninput="autoResizeTextarea(this)" placeholder="写点什么…">${esc(i.text)}</textarea>`;
+      h += `<div class="i-actions">`;
+      h += `<button class="act-btn ${i.highlighted?'hl-on':''}" onclick="hlInfoInDetail('${i.id}')" title="高亮">💡</button>`;
+      h += `<button class="act-btn del" onclick="delInfoInDetail('${i.id}')" title="删除">✕</button>`;
+      h += `</div></div>`;
+    });
+
+    h += `</div></div>`;
+  });
+
+  c.innerHTML = h;
+  setTimeout(initAllTextareas, 10);
+}
+
+function editInfoInDetail(id, text) {
+  const r = findInfo(id);
+  if(!r) return;
+  r.info.text = text.trim();
+  saveState();
+}
+
+function hlInfoInDetail(id) {
+  const r = findInfo(id);
+  if(!r) return;
+  r.info.highlighted = !r.info.highlighted;
+  saveState();
+  const mod = findMod(infoDetailModId);
+  if(mod) renderInfoDetailPage(mod);
+  toast('💡 高亮已切换');
+}
+
+let _delInfoDetailLock = false;
+async function delInfoInDetail(id) {
+  if(_delInfoDetailLock) return;
+  _delInfoDetailLock = true;
+  try {
+    const ok = await showConfirm('确定要删除这条信息吗？');
+    if(!ok) return;
+    MODULES.forEach(m => { m.infos = m.infos.filter(i=>i.id!==id); });
+    saveState();
+    const mod = findMod(infoDetailModId);
+    if(mod) renderInfoDetailPage(mod);
+    toast('🗑️ 已删除');
+  } finally {
+    _delInfoDetailLock = false;
+  }
+}
+
+function addInfoInDetail(modId) {
+  const mod = findMod(modId);
+  if(!mod) return;
+  const newId = uid();
+  const currentMonday = fmtDate(getCurrentWeekMonday());
+  mod.infos.push({id:newId, text:'', highlighted:false, week:currentMonday});
+  saveState();
+  renderInfoDetailPage(mod);
+  setTimeout(()=>{
+    const el = document.querySelector(`#pageInfoDetail [data-id="${newId}"] .i-text-area`);
+    if(el) { el.focus(); autoResizeTextarea(el); }
+  }, 50);
+  toast('➕ 已添加信息');
+}
+
+// ================================================================
+// INTERACTIONS
+// ================================================================
+function switchView(v) {
+  currentView = v;
+  document.querySelectorAll('.view-tab').forEach(t=>t.classList.toggle('active',t.dataset.view===v));
+  document.getElementById('weekView').classList.toggle('active',v==='week');
+  document.getElementById('dayView').classList.toggle('active',v==='day');
+  document.getElementById('weekNavBar').style.display = v==='week'?'flex':'none';
+  if(v==='day') renderDay();
+  if(v==='week') renderWeek();
+}
+
+// --- Todo ---
+function toggleTodo(id,checked) {
+  const r=findTodo(id);
+  if(r) r.todo.status=checked?'done':'pending';
+  saveState();
+  toast(checked?'✅ 已完成':'↩️ 已恢复');
+  setTimeout(()=>{ renderWeek(); if(currentView==='day') renderDay(); }, 200);
+}
+
+// Double-click to enable editing on a day-view draggable todo
+function enableRowEdit(el, todoId) {
+  el.contentEditable = 'true';
+  el.focus();
+  // Select all text for easy replacement
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  // Temporarily disable draggable on parent row
+  const row = el.closest('.row');
+  if(row) row.draggable = false;
+}
+function disableRowEdit(el, todoId) {
+  editTodoText(todoId, el.textContent);
+  el.contentEditable = 'false';
+  // Restore draggable
+  const row = el.closest('.row');
+  if(row) row.draggable = true;
+}
+
+// Same pattern for time-slot items
+function enableSlotEdit(el, todoId) {
+  el.contentEditable = 'true';
+  el.focus();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  const item = el.closest('.ts-item');
+  if(item) item.draggable = false;
+}
+function disableSlotEdit(el, todoId) {
+  editTodoText(todoId, el.textContent);
+  el.contentEditable = 'false';
+  const item = el.closest('.ts-item');
+  if(item) item.draggable = true;
+}
+
+// Switch a todo's module via a dropdown menu near the clicked tag
+function switchTodoModule(todoId, tagEl, event) {
+  event.stopPropagation();
+  // Remove any existing menu
+  const old = document.getElementById('modSwitchMenu');
+  if(old) old.remove();
+
+  const r = findTodo(todoId);
+  if(!r) return;
+
+  const menu = document.createElement('div');
+  menu.id = 'modSwitchMenu';
+  menu.style.cssText = 'position:fixed;z-index:9999;background:#fff;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px 0;min-width:140px;';
+  const rect = tagEl.getBoundingClientRect();
+  menu.style.left = rect.left + 'px';
+  menu.style.top = (rect.bottom + 4) + 'px';
+
+  MODULES.forEach(mod => {
+    const item = document.createElement('div');
+    const isCurrent = mod.id === r.mod.id;
+    item.style.cssText = 'padding:8px 14px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px;' + (isCurrent ? 'background:var(--primary-soft);font-weight:600;' : '');
+    item.innerHTML = `<span>${mod.emoji}</span><span>${mod.name}</span>${isCurrent ? '<span style="margin-left:auto;color:var(--primary)">✓</span>' : ''}`;
+    item.onmouseenter = () => { if(!isCurrent) item.style.background = '#f5f5f5'; };
+    item.onmouseleave = () => { if(!isCurrent) item.style.background = ''; };
+    item.onclick = (e) => {
+      e.stopPropagation();
+      menu.remove();
+      if(isCurrent) return;
+      // Move todo from current module to target module
+      const todo = r.todo;
+      r.mod.todos = r.mod.todos.filter(t => t.id !== todoId);
+      mod.todos.push(todo);
+      saveState();
+      if(currentView === 'day') renderDay();
+      else renderWeek();
+      toast(`📂 已移到「${mod.emoji} ${mod.name}」`);
+    };
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  // Close on click outside
+  setTimeout(() => {
+    const closeHandler = (e) => {
+      if(!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeHandler); }
+    };
+    document.addEventListener('click', closeHandler);
+  }, 0);
+}
+
+function editTodoText(id,text) {
+  const r=findTodo(id);
+  if(!r) return;
+  const trimmed = text.trim();
+  r.todo.text = trimmed;
+
+  tryAutoDetectDate(r.todo);
+  saveState();
+}
+
+// Centralized auto-detect date logic — used by editTodoText, oninput, and addTodo
+function tryAutoDetectDate(todo) {
+  const detected = detectDateFromItem(todo);
+  if(detected && detected !== todo.date) {
+    todo.date = detected;
+    todo.autoDate = true;
+
+    const normalized = normalizeRelativeTimeInText(todo.text, detected);
+    if(normalized !== todo.text) {
+      todo.text = normalized;
+    }
+    if(todo.note) {
+      const normalizedNote = normalizeRelativeTimeInText(todo.note, detected);
+      if(normalizedNote !== todo.note) todo.note = normalizedNote;
+    }
+
+    toast(`🔍 自动识别日期：${detected}`);
+    saveState();
+    setTimeout(()=>{ renderWeek(); if(currentView==='day') renderDay(); }, 100);
+    return true;
+  }
+  return false;
+}
+
+function addTodo(modId) {
+  const mod=findMod(modId);
+  if(!mod) return;
+  const newId = uid();
+  mod.todos.push({id:newId, text:'新待办事项', status:'pending', note:'', date:''});
+  saveState(); renderWeek();
+  setTimeout(()=>{
+    const el = document.querySelector(`[data-id="${newId}"] .row-text`);
+    if(el) {
+      el.focus();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }, 50);
+  toast('➕ 已添加待办');
+}
+
+let _delTodoLock = false;
+async function delTodo(id) {
+  if(_delTodoLock) return;
+  _delTodoLock = true;
+  try {
+    const ok = await showConfirm('确定要删除这条待办吗？');
+    if(!ok) return;
+    MODULES.forEach(m => { m.todos = m.todos.filter(t=>t.id!==id); });
+    saveState(); renderWeek();
+    if(currentView==='day') renderDay();
+    toast('🗑️ 已删除');
+  } finally {
+    _delTodoLock = false;
+  }
+}
+
+// --- Info (in week view) ---
+function editInfoText(id,text) {
+  const r=findInfo(id);
+  if(!r) return;
+  r.info.text = text.trim();
+  saveState();
+}
+
+function hlInfo(id) {
+  const r=findInfo(id);
+  if(r) { r.info.highlighted=!r.info.highlighted; saveState(); renderWeek(); toast('💡 高亮已切换'); }
+}
+
+function addInfo(modId) {
+  const mod=findMod(modId);
+  if(!mod) return;
+  const newId = uid();
+  const currentMonday = fmtDate(getCurrentWeekMonday());
+  mod.infos.push({id:newId, text:'', highlighted:false, week:currentMonday});
+  saveState(); renderWeek();
+  setTimeout(()=>{
+    const el = document.querySelector(`[data-id="${newId}"] .info-note-area`);
+    if(el) { el.focus(); autoResizeTextarea(el); }
+  }, 50);
+  toast('➕ 已添加信息');
+}
+
+let _delInfoLock = false;
+async function delInfo(id) {
+  if(_delInfoLock) return;
+  _delInfoLock = true;
+  try {
+    const ok = await showConfirm('确定要删除这条信息吗？');
+    if(!ok) return;
+    MODULES.forEach(m => { m.infos = m.infos.filter(i=>i.id!==id); });
+    saveState(); renderWeek();
+    toast('🗑️ 已删除');
+  } finally {
+    _delInfoLock = false;
+  }
+}
+
+// --- Day Nav ---
+function navDay(dir) { if(dir===0) dayOffset=0; else dayOffset+=dir; renderDay(); }
+
+// ================================================================
+// DATE PICKER (for assigning dates in week view)
+// ================================================================
+let openDatePickerTodoId = null;
+
+function closeDatePicker() {
+  const existing = document.querySelector('.date-picker-popover');
+  if(existing) existing.remove();
+  openDatePickerTodoId = null;
+}
+
+function openDatePicker(todoId, event) {
+  event.stopPropagation();
+  closeDatePicker();
+  openDatePickerTodoId = todoId;
+
+  const row = event.target.closest('.row');
+  if(!row) return;
+
+  const today = new Date();
+  const todayStr = fmtDate(today);
+  const wdNames = ['日','一','二','三','四','五','六'];
+
+  let h = '<div class="date-picker-popover" onclick="event.stopPropagation()">';
+  h += '<div class="dp-title">选择日期</div>';
+  h += '<div class="dp-shortcuts">';
+
+  // Generate 14 days starting from today, in chronological order
+  for(let i = 0; i < 14; i++) {
+    const dd = new Date(today); dd.setDate(today.getDate() + i);
+    const dds = fmtDate(dd);
+    let label;
+    if(i === 0) label = '今天';
+    else if(i === 1) label = '明天';
+    else if(i === 2) label = '后天';
+    else {
+      // Show "周X" for this week, "下周X" for next week
+      const todayMon = getMonday(today);
+      const ddMon = getMonday(dd);
+      const isNextWeek = ddMon.getTime() > todayMon.getTime();
+      label = (isNextWeek ? '下' : '') + '周' + wdNames[dd.getDay()];
+    }
+    h += `<button class="dp-shortcut" onclick="assignDate('${todoId}','${dds}')">${label}</button>`;
+  }
+
+  // Clear date option (only show if todo already has a date)
+  const r = findTodo(todoId);
+  if(r && r.todo.date) {
+    h += `<button class="dp-shortcut" style="color:var(--danger);margin-top:4px" onclick="assignDate('${todoId}','')">✕ 清除日期</button>`;
+  }
+
+  h += '</div></div>';
+  row.style.position = 'relative';
+  row.insertAdjacentHTML('beforeend', h);
+}
+
+// Date picker for time-slot items (anchored to .ts-item instead of .row)
+function openDatePickerSlot(todoId, event) {
+  event.stopPropagation();
+  closeDatePicker();
+  openDatePickerTodoId = todoId;
+
+  const item = event.target.closest('.ts-item');
+  if(!item) return;
+
+  const today = new Date();
+  const wdNames = ['日','一','二','三','四','五','六'];
+
+  let h = '<div class="date-picker-popover" onclick="event.stopPropagation()">';
+  h += '<div class="dp-title">选择日期</div>';
+  h += '<div class="dp-shortcuts">';
+
+  for(let i = 0; i < 14; i++) {
+    const dd = new Date(today); dd.setDate(today.getDate() + i);
+    const dds = fmtDate(dd);
+    let label;
+    if(i === 0) label = '今天';
+    else if(i === 1) label = '明天';
+    else if(i === 2) label = '后天';
+    else {
+      const todayMon = getMonday(today);
+      const ddMon = getMonday(dd);
+      const isNextWeek = ddMon.getTime() > todayMon.getTime();
+      label = (isNextWeek ? '下' : '') + '周' + wdNames[dd.getDay()];
+    }
+    h += `<button class="dp-shortcut" onclick="assignDateDay('${todoId}','${dds}')">${label}</button>`;
+  }
+
+  const r = findTodo(todoId);
+  if(r && r.todo.date) {
+    h += `<button class="dp-shortcut" style="color:var(--danger);margin-top:4px" onclick="assignDateDay('${todoId}','')">✕ 清除日期</button>`;
+  }
+
+  h += '</div></div>';
+  item.style.position = 'relative';
+  item.insertAdjacentHTML('beforeend', h);
+}
+
+// Date picker for day-view todo rows (anchored to .row)
+function openDatePickerDay(todoId, event) {
+  event.stopPropagation();
+  closeDatePicker();
+  openDatePickerTodoId = todoId;
+
+  const row = event.target.closest('.row');
+  if(!row) return;
+
+  const today = new Date();
+  const wdNames = ['日','一','二','三','四','五','六'];
+
+  let h = '<div class="date-picker-popover" onclick="event.stopPropagation()">';
+  h += '<div class="dp-title">选择日期</div>';
+  h += '<div class="dp-shortcuts">';
+
+  for(let i = 0; i < 14; i++) {
+    const dd = new Date(today); dd.setDate(today.getDate() + i);
+    const dds = fmtDate(dd);
+    let label;
+    if(i === 0) label = '今天';
+    else if(i === 1) label = '明天';
+    else if(i === 2) label = '后天';
+    else {
+      const todayMon = getMonday(today);
+      const ddMon = getMonday(dd);
+      const isNextWeek = ddMon.getTime() > todayMon.getTime();
+      label = (isNextWeek ? '下' : '') + '周' + wdNames[dd.getDay()];
+    }
+    h += `<button class="dp-shortcut" onclick="assignDateDay('${todoId}','${dds}')">${label}</button>`;
+  }
+
+  const r = findTodo(todoId);
+  if(r && r.todo.date) {
+    h += `<button class="dp-shortcut" style="color:var(--danger);margin-top:4px" onclick="assignDateDay('${todoId}','')">✕ 清除日期</button>`;
+  }
+
+  h += '</div></div>';
+  row.style.position = 'relative';
+  row.insertAdjacentHTML('beforeend', h);
+}
+
+// assignDate variant that re-renders day view instead of week view
+function assignDateDay(todoId, dateStr) {
+  const r = findTodo(todoId);
+  if(!r) return;
+  r.todo.date = dateStr;
+  if(!dateStr) { r.todo.autoDate = false; }
+  saveState();
+  closeDatePicker();
+  renderDay();
+  if(dateStr) {
+    const dt = dateToObj(dateStr);
+    const wdNames = ['日','一','二','三','四','五','六'];
+    toast(`📅 已改到 ${dateStr} 周${wdNames[dt.getDay()]}`);
+  } else {
+    toast('📅 已清除日期');
+  }
+}
+
+function assignDate(todoId, dateStr) {
+  const r = findTodo(todoId);
+  if(!r) return;
+  r.todo.date = dateStr;
+  if(!dateStr) { r.todo.autoDate = false; }
+  saveState();
+  closeDatePicker();
+  renderWeek();
+  if(dateStr) {
+    const dt = dateToObj(dateStr);
+    const wdNames = ['日','一','二','三','四','五','六'];
+    toast(`📅 已分配到 ${dateStr} 周${wdNames[dt.getDay()]}`);
+  } else {
+    toast('📅 已清除日期');
+  }
+}
+
+document.addEventListener('click', () => { closeDatePicker(); });
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeDatePicker(); });
+
+// ================================================================
+// TIME SLOT STORAGE (localStorage cache + cloud sync)
+// ================================================================
+
+function loadTimeSlots() {
+  try { return JSON.parse(localStorage.getItem(SLOT_KEY) || '{}'); } catch(e) { return {}; }
+}
+
+function saveTimeSlots(data) {
+  localStorage.setItem(SLOT_KEY, JSON.stringify(data));
+  // Schedule cloud sync (will include timeSlots)
+  scheduleCloudSync();
+}
+
+function getTimeSlots(dateStr) {
+  const all = loadTimeSlots();
+  return all[dateStr] || { morning: [], afternoon: [], evening: [] };
+}
+
+function setTimeSlots(dateStr, slots) {
+  const all = loadTimeSlots();
+  all[dateStr] = slots;
+  saveTimeSlots(all);
+}
+
+// ================================================================
+// DRAG & DROP for time planner
+// ================================================================
+let dragTodoId = null;
+
+function onTodoDragStart(event, todoId) {
+  dragTodoId = todoId;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', todoId);
+  setTimeout(() => {
+    // Support both .row and .ts-item drag sources
+    const el = event.target.closest('.row') || event.target.closest('.ts-item');
+    if(el) el.classList.add('dragging');
+  }, 0);
+}
+
+document.addEventListener('dragend', () => {
+  document.querySelectorAll('.row.dragging, .ts-item.dragging').forEach(el => el.classList.remove('dragging'));
+  document.querySelectorAll('.time-slot.drag-over').forEach(el => el.classList.remove('drag-over'));
+  dragTodoId = null;
+});
+
+function onSlotDragOver(event) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  const slot = event.target.closest('.time-slot');
+  if(slot) slot.classList.add('drag-over');
+}
+
+function onSlotDragLeave(event) {
+  const slot = event.target.closest('.time-slot');
+  if(slot && !slot.contains(event.relatedTarget)) slot.classList.remove('drag-over');
+}
+
+let _dropLock = false;
+function onSlotDrop(event, slotKey, dateStr) {
+  event.preventDefault();
+  event.stopPropagation();
+  const slot = event.target.closest('.time-slot');
+  if(slot) slot.classList.remove('drag-over');
+
+  if(_dropLock) return;
+  const todoId = event.dataTransfer.getData('text/plain') || dragTodoId;
+  if(!todoId) return;
+  if(!findTodo(todoId)) return; // Don't add non-existent todo
+  _dropLock = true;
+
+  const slots = getTimeSlots(dateStr);
+  if(!slots.morning) slots.morning = [];
+  if(!slots.afternoon) slots.afternoon = [];
+  if(!slots.evening) slots.evening = [];
+
+  // Remove from all slots first
+  ['morning','afternoon','evening'].forEach(k => {
+    slots[k] = slots[k].filter(id => id !== todoId);
+  });
+  slots[slotKey].push(todoId);
+  setTimeSlots(dateStr, slots);
+  renderDay();
+  _dropLock = false;
+
+  const slotNames = { morning: '上午', afternoon: '下午', evening: '晚上' };
+  toast(`⏰ 已安排到${slotNames[slotKey]}`);
+}
+
+// Get which slot label a todo is in
+function getSlotLabelForTodo(todoId, slotData) {
+  const labels = { morning: '上午', afternoon: '下午', evening: '晚上' };
+  for(const key of ['morning','afternoon','evening']) {
+    if(slotData[key] && slotData[key].includes(todoId)) return labels[key];
+  }
+  return '';
+}
+
+// ---- Todo list drop zone (for dragging back from time slots) ----
+function onTodoListDragOver(e) {
+  e.preventDefault();
+  const zone = document.getElementById('todoListDropZone');
+  if(zone) zone.classList.add('drop-highlight');
+}
+function onTodoListDragLeave(e) {
+  const zone = document.getElementById('todoListDropZone');
+  if(zone && !zone.contains(e.relatedTarget)) zone.classList.remove('drop-highlight');
+}
+function onTodoListDrop(e, dateStr) {
+  e.preventDefault();
+  e.stopPropagation();
+  const zone = document.getElementById('todoListDropZone');
+  if(zone) zone.classList.remove('drop-highlight');
+
+  const todoId = e.dataTransfer.getData('text/plain') || dragTodoId;
+  if(!todoId) return;
+
+  // Remove from all slots
+  const slots = getTimeSlots(dateStr);
+  let removed = false;
+  ['morning','afternoon','evening'].forEach(k => {
+    if(slots[k] && slots[k].includes(todoId)) {
+      slots[k] = slots[k].filter(id => id !== todoId);
+      removed = true;
+    }
+  });
+  if(removed) {
+    setTimeSlots(dateStr, slots);
+    renderDay();
+    toast('↩️ 已移回待办区');
+  }
+}
+
+function removeFromSlot(todoId, slotKey, dateStr) {
+  const slots = getTimeSlots(dateStr);
+  if(slots[slotKey]) {
+    slots[slotKey] = slots[slotKey].filter(id => id !== todoId);
+    setTimeSlots(dateStr, slots);
+    renderDay();
+    toast('↩️ 已移回待办区');
+  }
+}
+
+// Delete a todo from time slot (removes from slot AND from MODULES)
+let _delSlotLock = false;
+async function delTodoFromSlot(todoId, slotKey, dateStr) {
+  if(_delSlotLock) return;
+  _delSlotLock = true;
+  try {
+    const ok = await showConfirm('确定要删除这条待办吗？');
+    if(!ok) return;
+    // Remove from slot
+    const slots = getTimeSlots(dateStr);
+    if(slots[slotKey]) {
+      slots[slotKey] = slots[slotKey].filter(id => id !== todoId);
+      setTimeSlots(dateStr, slots);
+    }
+    // Remove from MODULES
+    MODULES.forEach(m => { m.todos = m.todos.filter(t => t.id !== todoId); });
+    saveState();
+    renderDay();
+    toast('🗑️ 已删除');
+  } finally {
+    _delSlotLock = false;
+  }
+}
+
+// Add a new todo directly into a time slot
+function addTodoInSlot(slotKey, dateStr) {
+  // Use the module selected in day view's add bar, or fallback to first module
+  const select = document.getElementById('dayAddModule');
+  const modId = select ? select.value : (MODULES[0] ? MODULES[0].id : null);
+  const mod = modId ? findMod(modId) : MODULES[0];
+  if(!mod) return;
+
+  const newId = uid();
+  const newTodo = {id:newId, text:'新待办事项', status:'pending', note:'', date:dateStr};
+  mod.todos.push(newTodo);
+
+  // Assign to slot
+  const slots = getTimeSlots(dateStr);
+  if(!slots[slotKey]) slots[slotKey] = [];
+  slots[slotKey].push(newId);
+  setTimeSlots(dateStr, slots);
+
+  saveState();
+  renderDay();
+
+  // Focus on the new item text for editing
+  setTimeout(() => {
+    const el = document.querySelector(`.ts-item[data-id="${newId}"] .ts-item-text`);
+    if(el) {
+      enableSlotEdit(el, newId);
+      el.onblur = function() {
+        const newText = el.textContent.trim();
+        if(newText && newText !== '新待办事项') {
+          editTodoText(newId, newText);
+        } else if(!newText) {
+          editTodoText(newId, '新待办事项');
+        }
+        el.contentEditable = 'false';
+        const item = el.closest('.ts-item');
+        if(item) item.draggable = true;
+        renderDay();
+      };
+    }
+  }, 50);
+
+  const slotNames = { morning: '上午', afternoon: '下午', evening: '晚上' };
+  toast(`➕ 已添加到${slotNames[slotKey]}`);
+}
+
+// ================================================================
+// INIT
+// ================================================================
+loadState(); // Fast: load from localStorage first
+
+// 规范化所有 info 的 week 字段
+function normalizeInfoWeeks() {
+  MODULES.forEach(mod => {
+    mod.infos.forEach(i => {
+      if(!i.week) {
+        i.week = fmtDate(getMonday(NOW));
+      } else {
+        const d = dateToObj(i.week);
+        const mon = getMonday(d);
+        i.week = fmtDate(mon);
+      }
+    });
+  });
+}
+
+function deduplicateTodos() {
+  const seenTodoIds = new Set();
+  MODULES.forEach(mod => {
+    mod.todos = mod.todos.filter(t => {
+      if(seenTodoIds.has(t.id)) return false;
+      seenTodoIds.add(t.id);
+      return true;
+    });
+  });
+}
+
+function autoDetectAllDates() {
+  let autoFixed = 0;
+  MODULES.forEach(mod => {
+    mod.todos.forEach(t => {
+      if(!t.date || t.date === '') {
+        const detected = detectDateFromItem(t);
+        if(detected) {
+          t.date = detected;
+          t.autoDate = true;
+          const normalized = normalizeRelativeTimeInText(t.text, detected);
+          if(normalized !== t.text) t.text = normalized;
+          if(t.note) {
+            const normalizedNote = normalizeRelativeTimeInText(t.note, detected);
+            if(normalizedNote !== t.note) t.note = normalizedNote;
+          }
+          autoFixed++;
+        }
+      } else if(t.autoDate && t.date) {
+        const detected = detectDateFromItem(t);
+        if(detected && detected !== t.date) {
+          t.date = detected;
+          const normalized = normalizeRelativeTimeInText(t.text, detected);
+          if(normalized !== t.text) t.text = normalized;
+          if(t.note) {
+            const normalizedNote = normalizeRelativeTimeInText(t.note, detected);
+            if(normalizedNote !== t.note) t.note = normalizedNote;
+          }
+          autoFixed++;
+        } else {
+          const normalized = normalizeRelativeTimeInText(t.text, t.date);
+          if(normalized !== t.text) t.text = normalized;
+          if(t.note) {
+            const normalizedNote = normalizeRelativeTimeInText(t.note, t.date);
+            if(normalizedNote !== t.note) t.note = normalizedNote;
+          }
+        }
+      }
+    });
+  });
+  return autoFixed;
+}
+
+// Initial render with local data (fast)
+normalizeInfoWeeks();
+deduplicateTodos();
+let autoFixed = autoDetectAllDates();
+if(autoFixed > 0) {
+  setTimeout(() => toast(`🔍 自动识别了 ${autoFixed} 条待办的日期`), 500);
+}
+
+saveState();
+document.getElementById('weekLabel').textContent = getWeekLabel();
+renderWeek();
+
+// Then async: load from cloud and refresh if newer data exists
+(async function initCloudSync() {
+  const loaded = await loadFromCloud();
+  if(loaded) {
+    restoreUidCounter();
+    normalizeInfoWeeks();
+    deduplicateTodos();
+    autoDetectAllDates();
+    // Save normalized data back to localStorage
+    localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES }));
+    document.getElementById('weekLabel').textContent = getWeekLabel();
+    if(currentView === 'week') renderWeek();
+    else renderDay();
+    _cloudReady = true;
+    showSyncStatus('saved');
+    console.log('✅ Cloud data loaded and synced');
+  } else {
+    _cloudReady = true;
+    // First time — push local data to cloud
+    await syncToCloud();
+    console.log('☁️ Local data pushed to cloud');
+  }
+})();
+</script>
+</body>
+</html>
