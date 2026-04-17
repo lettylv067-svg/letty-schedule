@@ -1146,6 +1146,7 @@ function saveState() {
   const now = new Date().toISOString();
   localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: now }));
   _localUpdatedAt = now;
+  _userHasEdited = true; // Mark that user made real changes this session
   // Schedule async cloud sync
   scheduleCloudSync();
 }
@@ -2482,27 +2483,11 @@ function addTodoInSlot(slotKey, dateStr) {
 // INIT
 // ================================================================
 
-// One-time migration: detect and purge stale demo data from localStorage
-// Demo data had hardcoded IDs like t1, t2, i1, i2 etc.
-(function purgeDemoCache() {
-  const raw = localStorage.getItem(STORE_KEY);
-  if (!raw) return;
-  try {
-    const saved = JSON.parse(raw);
-    if (!saved.modules) return;
-    const allTodoIds = new Set();
-    saved.modules.forEach(m => (m.todos || []).forEach(t => allTodoIds.add(t.id)));
-    // Demo data signature: contains t1, t2, t3 — real user data would never have these sequential IDs
-    const demoSignature = ['t1', 't2', 't3', 't8', 't13'];
-    const isDemoData = demoSignature.every(id => allTodoIds.has(id));
-    if (isDemoData) {
-      console.log('🧹 Detected stale demo data in localStorage, purging...');
-      localStorage.removeItem(STORE_KEY);
-    }
-  } catch(e) {}
-})();
-
-loadState(); // Fast: load from localStorage first (if any remains after purge)
+// INIT: Cloud is the single source of truth.
+// localStorage is only a cache for offline/fast-load. On init, we do NOT load from localStorage first.
+// Instead, we start with empty MODULES and wait for cloud data.
+// This prevents any stale/demo data in localStorage from ever being shown or pushed to cloud.
+console.log('🚀 INIT: starting with empty modules, waiting for cloud...');
 
 // 规范化所有 info 的 week 字段
 function normalizeInfoWeeks() {
@@ -2572,30 +2557,22 @@ function autoDetectAllDates() {
   return autoFixed;
 }
 
-// Initial render with local data (fast) — DO NOT trigger cloud sync yet
-normalizeInfoWeeks();
-deduplicateTodos();
-let autoFixed = autoDetectAllDates();
-if(autoFixed > 0) {
-  setTimeout(() => toast(`🔍 自动识别了 ${autoFixed} 条待办的日期`), 500);
-}
-
-// Save normalized data to localStorage only (no cloud sync until cloud data is loaded)
-// IMPORTANT: preserve original updated_at for cloud comparison — do NOT stamp new time here
-localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: _localUpdatedAt || '' }));
-
+// Render empty state first (shows loading skeleton)
 document.getElementById('weekLabel').textContent = getWeekLabel();
 renderWeek();
 
-// Then async: load from cloud and refresh if newer data exists
+// Then load from cloud — this is the ONLY data source on page load
 (async function initCloudSync() {
   const loaded = await loadFromCloud();
   if(loaded) {
     restoreUidCounter();
     normalizeInfoWeeks();
     deduplicateTodos();
-    autoDetectAllDates();
-    // Save normalized cloud data back to localStorage
+    let autoFixed = autoDetectAllDates();
+    if(autoFixed > 0) {
+      setTimeout(() => toast(`🔍 自动识别了 ${autoFixed} 条待办的日期`), 500);
+    }
+    // Cache cloud data to localStorage for future offline use
     localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: _localUpdatedAt }));
     document.getElementById('weekLabel').textContent = getWeekLabel();
     if(currentView === 'week') renderWeek();
@@ -2604,18 +2581,27 @@ renderWeek();
     showSyncStatus('saved');
     console.log('✅ Cloud data loaded and synced');
   } else {
+    // Cloud not available — try localStorage as fallback (offline mode)
+    loadState();
+    if(MODULES.some(m => m.todos.length > 0 || m.infos.length > 0)) {
+      normalizeInfoWeeks();
+      deduplicateTodos();
+      autoDetectAllDates();
+      if(currentView === 'week') renderWeek();
+      else renderDay();
+      console.log('📴 Using localStorage fallback (offline mode)');
+    }
     _cloudReady = true;
-    // Cloud load returned false — could be network issue or first time
-    // Do NOT push local data to cloud here (might overwrite good cloud data)
-    // Only push if there's truly no cloud row (handled by syncToCloud on user edits)
     showSyncStatus('offline');
-    console.log('⚠️ Cloud load returned false, NOT pushing local data to cloud');
+    console.log('⚠️ Cloud load returned false, using offline data if any');
   }
 })();
 
 // Protect against data loss on page close/navigate — force sync immediately
+let _userHasEdited = false; // Only sync on close if user actually made changes
+
 window.addEventListener('beforeunload', () => {
-  if(!_cloudAvailable || !_supabaseClient) return;
+  if(!_cloudAvailable || !_supabaseClient || !_userHasEdited) return;
   // Use sendBeacon for reliable delivery even during page close
   const payload = JSON.stringify({
     id: DATA_ROW_ID,
@@ -2645,7 +2631,7 @@ window.addEventListener('beforeunload', () => {
 
 // Also sync when tab becomes hidden (user switches tabs)
 document.addEventListener('visibilitychange', () => {
-  if(document.visibilityState === 'hidden' && _cloudAvailable) {
+  if(document.visibilityState === 'hidden' && _cloudAvailable && _userHasEdited) {
     syncToCloud();
   }
 });
