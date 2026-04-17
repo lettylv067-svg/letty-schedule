@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Letty 的日程管理</title>
+<title>日程管理</title>
 <style>
   :root {
     --bg: #f2f2f7;
@@ -64,14 +64,15 @@
     display: flex; align-items: center; justify-content: space-between;
     position: sticky; top: 0; z-index: 100;
   }
-  .header-left { display:flex; align-items:center; gap:14px; }
+  .header-left { display:flex; align-items:center; gap:14px; flex:1; min-width:0; }
+  .header-center { display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .header-right { display:flex; align-items:center; gap:14px; flex:1; min-width:0; justify-content:flex-end; }
   .header h1 {
     font-size: 20px; font-weight: 700;
     background: linear-gradient(135deg, #007aff, #5856d6);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
   }
-  .header-right { display:flex; align-items:center; gap:14px; }
 
   .view-tabs {
     display: flex; gap: 2px;
@@ -133,7 +134,14 @@
   .module-title { display:flex; align-items:center; gap:10px; }
   .m-emoji { font-size: 22px; }
   .m-name { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
-  .m-badges { display:flex; gap:6px; }
+  .m-badges { display:flex; gap:6px; align-items:center; }
+  .mod-del-btn {
+    opacity: 0; transition: opacity 0.2s; cursor: pointer;
+    background: none; border: none; font-size: 14px; color: var(--text-tri);
+    padding: 2px 6px; border-radius: 6px; margin-left: 4px;
+  }
+  .mod-del-btn:hover { color: var(--danger); background: rgba(255,59,48,0.08); }
+  .module-card:hover .mod-del-btn { opacity: 1; }
   .badge {
     font-size: 11px; font-weight: 600;
     padding: 2px 10px; border-radius: 100px;
@@ -235,9 +243,10 @@
     resize: none; overflow: hidden;
     padding: 4px 8px; margin: -4px -8px;
     border-radius: 8px;
-    transition: all .2s var(--trans-smooth);
+    transition: background .2s var(--trans-smooth), box-shadow .2s var(--trans-smooth);
     width: 100%;
     min-height: 24px;
+    box-sizing: border-box;
   }
   .info-note-area:focus {
     background: rgba(175,82,222,0.04);
@@ -418,7 +427,8 @@
     word-break: break-word; outline: none; border: none;
     background: transparent; resize: none; overflow: hidden;
     border-radius: 8px; padding: 4px 8px; margin: -4px -8px;
-    transition: all .2s var(--trans-smooth); width: 100%; min-height: 24px;
+    transition: background .2s var(--trans-smooth), box-shadow .2s var(--trans-smooth);
+    width: 100%; min-height: 24px; box-sizing: border-box;
   }
   .info-wk-body .info-row .i-text:focus {
     background: rgba(175,82,222,0.04);
@@ -459,6 +469,7 @@
   }
   .day-nav button:hover { background: var(--primary-soft); border-color: var(--primary); }
   .day-nav button:active { transform: scale(0.92); }
+  .day-nav .day-today-btn { width: auto; padding: 0 14px; font-size: 13px; }
 
   .day-section {
     background: var(--card-solid);
@@ -476,12 +487,10 @@
   .empty-day { text-align:center; padding:60px; color: var(--text-sec); font-size: 14px; }
   .empty-day .big-emoji { font-size: 48px; margin-bottom: 12px; }
 
-  /* ========== DAY VIEW — ADD TODO QUICK BAR ========== */
+  /* ========== DAY VIEW — ADD TODO QUICK BAR (inside todo section) ========== */
   .day-add-bar {
-    background: var(--card-solid);
-    border-radius: var(--r-lg); border: 0.5px solid var(--border);
-    padding: 16px 20px; box-shadow: var(--shadow-sm);
-    display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+    padding: 12px 20px; display: flex; align-items: center; gap: 10px;
+    border-bottom: 0.5px solid var(--border);
   }
   .day-add-bar .add-label { font-size: 13px; font-weight: 600; color: var(--text-sec); white-space: nowrap; }
   .day-add-select {
@@ -726,6 +735,269 @@
     position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0;
   }
 
+  /* ========== VERSION MANAGEMENT ========== */
+  .version-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+    z-index: 500; align-items: center; justify-content: center;
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  }
+  .version-overlay.active { display: flex; }
+  .version-panel {
+    background: var(--card-solid); border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lg); width: 520px; max-width: 92vw;
+    max-height: 85vh; overflow: hidden; display: flex; flex-direction: column;
+    animation: scaleIn .3s var(--trans-spring);
+  }
+  .version-header {
+    padding: 20px 24px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .version-header h2 {
+    font-size: 17px; font-weight: 700; color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .version-close {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(118,118,128,0.12); border: none;
+    font-size: 14px; color: var(--text-sec); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s;
+  }
+  .version-close:hover { background: rgba(118,118,128,0.2); color: var(--text); }
+  .version-body { padding: 8px 0; overflow-y: auto; flex: 1; }
+  .version-empty {
+    padding: 40px 24px; text-align: center; color: var(--text-tri);
+    font-size: 14px;
+  }
+  .version-item {
+    padding: 14px 24px; display: flex; align-items: center; gap: 14px;
+    cursor: pointer; transition: background .15s; position: relative;
+  }
+  .version-item:hover { background: var(--primary-soft); }
+  .version-item.active { background: var(--primary-medium); }
+  .version-item-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, rgba(0,122,255,0.1), rgba(88,86,214,0.1));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .version-item-info { flex: 1; min-width: 0; }
+  .version-item-time {
+    font-size: 14px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .version-item-meta {
+    font-size: 12px; color: var(--text-sec); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .version-item-tag {
+    font-size: 10px; font-weight: 600; padding: 2px 8px;
+    border-radius: 10px; white-space: nowrap; flex-shrink: 0;
+  }
+  .version-item-tag.current {
+    background: rgba(52,199,89,0.12); color: #34c759;
+  }
+  .version-item-tag.auto {
+    background: rgba(0,122,255,0.08); color: var(--primary);
+  }
+  .version-actions {
+    padding: 14px 24px 20px; border-top: 1px solid var(--border);
+    display: flex; gap: 10px; justify-content: flex-end;
+  }
+  .version-btn {
+    padding: 8px 20px; border-radius: 10px; font-size: 13px;
+    font-weight: 600; cursor: pointer; border: none; transition: all .2s;
+  }
+  .version-btn-preview {
+    background: rgba(88,86,214,0.1); color: #5856d6;
+  }
+  .version-btn-preview:hover { background: rgba(88,86,214,0.18); }
+  .version-btn-restore {
+    background: var(--primary); color: #fff;
+  }
+  .version-btn-restore:hover { background: #0066d6; }
+  .version-btn-cancel {
+    background: rgba(118,118,128,0.12); color: var(--text-sec);
+  }
+  .version-btn-cancel:hover { background: rgba(118,118,128,0.2); }
+  .version-btn:disabled {
+    opacity: 0.4; cursor: not-allowed;
+  }
+
+  /* Version diff highlights */
+  .diff-added {
+    border-left: 3px solid #34c759 !important;
+    background: rgba(52,199,89,0.06) !important;
+    position: relative;
+  }
+  .diff-added::after {
+    content: '找回';
+    position: absolute; top: 4px; right: 8px;
+    font-size: 10px; font-weight: 700; color: #34c759;
+    background: rgba(52,199,89,0.12); padding: 1px 7px; border-radius: 6px;
+    pointer-events: none;
+  }
+  .diff-removed {
+    border-left: 3px solid #ff3b30 !important;
+    background: rgba(255,59,48,0.06) !important;
+    position: relative;
+    opacity: 0.55;
+  }
+  .diff-removed::after {
+    content: '未插入';
+    position: absolute; top: 4px; right: 8px;
+    font-size: 10px; font-weight: 700; color: #ff3b30;
+    background: rgba(255,59,48,0.12); padding: 1px 7px; border-radius: 6px;
+    pointer-events: none;
+  }
+  .diff-changed {
+    border-left: 3px solid #ff9500 !important;
+    background: rgba(255,149,0,0.06) !important;
+    position: relative;
+  }
+  .diff-changed::after {
+    content: '有变化';
+    position: absolute; top: 4px; right: 8px;
+    font-size: 10px; font-weight: 700; color: #ff9500;
+    background: rgba(255,149,0,0.12); padding: 1px 7px; border-radius: 6px;
+    pointer-events: none;
+  }
+  /* Diff legend bar inside preview banner */
+  .diff-legend {
+    display: inline-flex; gap: 14px; margin-left: 16px; font-size: 11px; font-weight: 500;
+  }
+  .diff-legend-item {
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .diff-legend-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+  }
+  /* Module-level diff badge */
+  .diff-mod-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 8px;
+    border-radius: 8px; margin-left: 8px;
+  }
+  .diff-mod-new { background: rgba(52,199,89,0.12); color: #34c759; }
+  .diff-mod-removed { background: rgba(255,59,48,0.12); color: #ff3b30; }
+
+  /* Version preview banner */
+  .version-preview-banner {
+    display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 400;
+    background: linear-gradient(135deg, #5856d6, #007aff);
+    color: #fff; padding: 10px 24px; font-size: 13px; font-weight: 600;
+    text-align: center; box-shadow: 0 2px 12px rgba(88,86,214,0.3);
+  }
+  .version-preview-banner.active { display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .version-preview-banner button {
+    padding: 5px 16px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.15); color: #fff; font-size: 12px;
+    font-weight: 600; cursor: pointer; transition: all .2s;
+  }
+  .version-preview-banner button:hover { background: rgba(255,255,255,0.25); }
+  .version-preview-banner .vp-restore-btn {
+    background: #fff; color: #5856d6; border-color: #fff;
+  }
+  .version-preview-banner .vp-restore-btn:hover { background: rgba(255,255,255,0.9); }
+
+  /* ========== AUTH — Login / Register ========== */
+  .auth-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity .4s var(--trans-smooth);
+  }
+  .auth-overlay.hidden { opacity: 0; pointer-events: none; }
+  .auth-card {
+    background: rgba(255,255,255,0.82);
+    -webkit-backdrop-filter: saturate(1.8) blur(30px);
+    backdrop-filter: saturate(1.8) blur(30px);
+    border-radius: 24px; padding: 40px 36px;
+    width: 380px; max-width: 90vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 4px 16px rgba(0,0,0,0.08);
+    text-align: center;
+    animation: authSlideUp .5s var(--trans-spring);
+  }
+  @keyframes authSlideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .auth-card h2 {
+    font-size: 24px; font-weight: 700; margin-bottom: 6px;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .auth-card .auth-subtitle { color: var(--text-sec); font-size: 14px; margin-bottom: 28px; }
+  .auth-input-group { text-align: left; margin-bottom: 16px; }
+  .auth-input-group label {
+    display: block; font-size: 12px; font-weight: 600; color: var(--text-sec);
+    margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .auth-input-group input {
+    width: 100%; padding: 12px 16px; border: 1.5px solid var(--border-strong);
+    border-radius: 12px; font-size: 15px; font-family: inherit;
+    background: rgba(255,255,255,0.7); color: var(--text);
+    transition: all .2s var(--trans-smooth); outline: none;
+  }
+  .auth-input-group input:focus {
+    border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
+  }
+  .auth-input-group .auth-hint {
+    font-size: 11px; color: var(--text-tri); margin-top: 4px;
+  }
+  .auth-input-group .auth-error {
+    font-size: 12px; color: var(--danger); margin-top: 4px; display: none;
+  }
+  .auth-btn {
+    width: 100%; padding: 13px; border: none; border-radius: 14px;
+    font-size: 16px; font-weight: 600; cursor: pointer;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    color: #fff; margin-top: 8px;
+    transition: all .2s var(--trans-smooth);
+    box-shadow: 0 4px 12px rgba(0,122,255,0.25);
+  }
+  .auth-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,122,255,0.35); }
+  .auth-btn:active { transform: translateY(0) scale(0.98); }
+  .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .auth-switch {
+    margin-top: 20px; font-size: 13px; color: var(--text-sec);
+  }
+  .auth-switch a {
+    color: var(--primary); font-weight: 600; cursor: pointer; text-decoration: none;
+  }
+  .auth-switch a:hover { text-decoration: underline; }
+
+  /* User avatar in header */
+  .user-badge {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 12px 4px 6px; border-radius: 20px;
+    background: rgba(118,118,128,0.08); cursor: pointer;
+    transition: all .2s var(--trans-smooth); position: relative;
+  }
+  .user-badge:hover { background: rgba(118,118,128,0.15); }
+  .user-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 13px; font-weight: 700;
+  }
+  .user-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .user-menu {
+    position: absolute; top: calc(100% + 6px); right: 0;
+    background: var(--card-solid); border-radius: 12px;
+    box-shadow: var(--shadow-lg); padding: 6px;
+    min-width: 140px; display: none; z-index: 200;
+    border: 0.5px solid var(--border);
+  }
+  .user-menu.show { display: block; }
+  .user-menu-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-radius: 8px; font-size: 13px;
+    color: var(--text); cursor: pointer; transition: background .15s;
+  }
+  .user-menu-item:hover { background: rgba(118,118,128,0.08); }
+  .user-menu-item.danger { color: var(--danger); }
+
   /* ========== RESPONSIVE ========== */
   @media (max-width:860px) {
     .module-grid { grid-template-columns: 1fr; }
@@ -741,24 +1013,82 @@
 </head>
 <body>
 
+<!-- ========== AUTH OVERLAY ========== -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-card" id="authCard">
+    <!-- Login Form -->
+    <div id="loginForm">
+      <h2>📋 日程管理</h2>
+      <p class="auth-subtitle">登录你的账号，开始管理日程</p>
+      <div class="auth-input-group">
+        <label>用户名</label>
+        <input type="text" id="loginUsername" placeholder="输入用户名" maxlength="20" autocomplete="username">
+        <div class="auth-error" id="loginUsernameError"></div>
+      </div>
+      <div class="auth-input-group">
+        <label>密码</label>
+        <input type="password" id="loginPassword" placeholder="输入密码" autocomplete="current-password">
+        <div class="auth-error" id="loginPasswordError"></div>
+      </div>
+      <button class="auth-btn" id="loginBtn" onclick="handleLogin()">登 录</button>
+      <div class="auth-switch">没有账号？<a onclick="showRegister()">创建账号</a></div>
+    </div>
+    <!-- Register Form -->
+    <div id="registerForm" style="display:none;">
+      <h2>📋 创建账号</h2>
+      <p class="auth-subtitle">创建你自己的日程管理空间</p>
+      <div class="auth-input-group">
+        <label>用户名</label>
+        <input type="text" id="regUsername" placeholder="中英文皆可，20 字符以内" maxlength="20" autocomplete="username">
+        <div class="auth-hint">中英文皆可，20 个字符以内</div>
+        <div class="auth-error" id="regUsernameError"></div>
+      </div>
+      <div class="auth-input-group">
+        <label>密码</label>
+        <input type="password" id="regPassword" placeholder="至少 6 位" autocomplete="new-password">
+        <div class="auth-hint">至少 6 位</div>
+        <div class="auth-error" id="regPasswordError"></div>
+      </div>
+      <div class="auth-input-group">
+        <label>确认密码</label>
+        <input type="password" id="regPasswordConfirm" placeholder="再次输入密码" autocomplete="new-password">
+        <div class="auth-error" id="regConfirmError"></div>
+      </div>
+      <button class="auth-btn" id="regBtn" onclick="handleRegister()">创建并登录</button>
+      <div class="auth-switch">已有账号？<a onclick="showLogin()">返回登录</a></div>
+    </div>
+  </div>
+</div>
+
 <div class="header">
   <div class="header-left">
-    <h1>📋 Letty 的日程管理</h1>
+    <h1>📋 日程管理</h1>
+    <div class="sync-badge" id="syncBadge" style="display:none;"></div>
+  </div>
+  <div class="header-center">
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="week" onclick="switchView('week')">周视图</button>
+      <button class="view-tab" data-view="day" onclick="switchView('day')">日视图</button>
+    </div>
   </div>
   <div class="header-right">
-    <div class="data-mgmt">
-      <button class="data-btn" onclick="exportData()" title="导出所有数据为 JSON 备份"><span class="btn-icon">📥</span> 导出</button>
-      <label class="data-btn data-btn-import" title="从 JSON 备份文件恢复数据"><span class="btn-icon">📤</span> 导入<input type="file" accept=".json" onchange="importData(event)" /></label>
-    </div>
     <div class="week-nav" id="weekNavBar">
       <button class="week-nav-btn" onclick="navWeek(-1)" title="上一周">◀</button>
       <span class="week-label" id="weekLabel"></span>
       <button class="week-nav-btn" onclick="navWeek(1)" title="下一周">▶</button>
       <button class="week-today-btn" onclick="navWeek(0)" title="回到本周">本周</button>
     </div>
-    <div class="view-tabs">
-      <button class="view-tab active" data-view="week" onclick="switchView('week')">周视图</button>
-      <button class="view-tab" data-view="day" onclick="switchView('day')">日视图</button>
+    <div class="data-mgmt">
+      <button class="data-btn" onclick="openVersionPanel()" title="查看历史版本"><span class="btn-icon">🕐</span> 版本</button>
+      <button class="data-btn" onclick="exportData()" title="导出所有数据为 JSON 备份"><span class="btn-icon">📥</span> 导出</button>
+      <label class="data-btn data-btn-import" title="从 JSON 备份文件恢复数据"><span class="btn-icon">📤</span> 导入<input type="file" accept=".json" onchange="importData(event)" /></label>
+    </div>
+    <div class="user-badge" id="userBadge" onclick="toggleUserMenu()">
+      <div class="user-avatar" id="userAvatar"></div>
+      <span class="user-name" id="userName"></span>
+      <div class="user-menu" id="userMenu">
+        <div class="user-menu-item danger" onclick="handleLogout(event)">🚪 退出登录</div>
+      </div>
     </div>
   </div>
 </div>
@@ -774,6 +1104,31 @@
 
 <div class="toast" id="toast"></div>
 <div id="confirmRoot"></div>
+
+<!-- 版本预览横幅 -->
+<div class="version-preview-banner" id="versionPreviewBanner">
+  <span id="vpBannerText">📷 正在预览版本</span>
+  <button onclick="exitVersionPreview()">退出预览</button>
+  <button class="vp-restore-btn" id="vpRestoreBtn" onclick="restoreFromPreview()">恢复此版本</button>
+</div>
+
+<!-- 版本管理弹窗 -->
+<div class="version-overlay" id="versionOverlay">
+  <div class="version-panel">
+    <div class="version-header">
+      <h2>🕐 版本历史</h2>
+      <button class="version-close" onclick="closeVersionPanel()">✕</button>
+    </div>
+    <div class="version-body" id="versionBody">
+      <div class="version-empty">加载中…</div>
+    </div>
+    <div class="version-actions" id="versionActions" style="display:none;">
+      <button class="version-btn version-btn-cancel" onclick="closeVersionPanel()">关闭</button>
+      <button class="version-btn version-btn-preview" id="versionPreviewBtn" onclick="previewSelectedVersion()" disabled>👁️ 预览</button>
+      <button class="version-btn version-btn-restore" id="versionRestoreBtn" onclick="restoreSelectedVersion()" disabled>恢复此版本</button>
+    </div>
+  </div>
+</div>
 
 <!-- 添加模块弹窗 -->
 <div class="modal-overlay" id="addModuleModal">
@@ -962,10 +1317,52 @@ const DEFAULT_MODULES = [
   { id:'pc',         name:'PC端版本',   emoji:'💻', todos:[], infos:[] },
 ];
 
+// NEW_USER_MODULES — starter template for newly registered users
+// Existing users (e.g. letty) are NOT affected; they keep their own data.
+function buildNewUserModules() {
+  // Calculate "next Wednesday" date string for the sample todo
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun ... 6=Sat
+  let daysUntilWed = (3 - day + 7) % 7;
+  if(daysUntilWed === 0) daysUntilWed = 7; // if today is Wed, use next Wed
+  const wed = new Date(now);
+  wed.setDate(wed.getDate() + daysUntilWed);
+  const wedStr = String(wed.getMonth()+1).padStart(2,'0') + '/' + String(wed.getDate()).padStart(2,'0');
+
+  // Current week monday for info's week field
+  const monday = getMonday(now);
+  const monStr = String(monday.getMonth()+1).padStart(2,'0') + '/' + String(monday.getDate()).padStart(2,'0');
+
+  return [
+    {
+      id: 'demo-fitness', name: '健身与健康', emoji: '💪', todos: [], infos: []
+    },
+    {
+      id: 'demo-interview', name: '面试招聘', emoji: '🎯',
+      todos: [
+        { id: 'demo_t1', text: '周三 20 点校招面试', status: 'pending', date: wedStr, autoDate: true, hl: false }
+      ],
+      infos: [
+        { id: 'demo_i1', text: '多聊候选人没有准备过的问题', week: monStr }
+      ]
+    },
+    {
+      id: 'demo-version', name: '版本进展', emoji: '🚀', todos: [], infos: []
+    }
+  ];
+}
+
 let MODULES = JSON.parse(JSON.stringify(DEFAULT_MODULES));
 
 // ================================================================
-// SUPABASE CLOUD STORAGE
+// CLOUD SYNC ENGINE v2 — "Cloud-Doc" style
+// Design: Cloud is single source of truth. Local is a cache + offline buffer.
+// - Every cloud write increments `revision` (monotonic counter)
+// - On page load: cloud first, localStorage fallback
+// - On user edit: save localStorage instantly, debounce push to cloud
+// - On tab focus (visibilitychange → visible): pull cloud, refresh if newer
+// - On network reconnect (online event): push pending changes
+// - On page close: keepalive push
 // ================================================================
 const SUPABASE_URL = 'https://kdzwecziebiqxvviqmfa.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkendlY3ppZWJpcXh2dmlxbWZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzOTI3NzYsImV4cCI6MjA5MTk2ODc3Nn0.WDZjzEQ1fIz_YSMy02rKGeCKx9f_a-5mQqcUsJmy1fU';
@@ -982,18 +1379,299 @@ try {
 } catch(e) {
   console.warn('⚠️ Supabase init failed:', e);
 }
-const DATA_ROW_ID = 'letty_main';
-let _cloudSyncPending = false;
-let _cloudSyncTimer = null;
-let _cloudReady = false;
 
-// Sync status indicator — always visible in header
+// ================================================================
+// AUTH MODULE — Login / Register / Session
+// ================================================================
+const AUTH_SESSION_KEY = 'schedule_auth_session';
+const USERS_ROW_ID = '_users_registry';
+let _currentUser = null; // { username, display_name }
+
+// SHA-256 hash (Web Crypto API)
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Fetch users registry from cloud
+async function fetchUsersRegistry() {
+  if(!_cloudAvailable || !_supabaseClient) return [];
+  try {
+    const { data, error } = await _supabaseClient
+      .from('schedule_data')
+      .select('*')
+      .eq('id', USERS_ROW_ID)
+      .single();
+    if(error || !data || !Array.isArray(data.modules)) return [];
+    return data.modules;
+  } catch(e) { return []; }
+}
+
+// Save users registry to cloud
+async function saveUsersRegistry(users) {
+  if(!_cloudAvailable || !_supabaseClient) return false;
+  try {
+    const { error } = await _supabaseClient
+      .from('schedule_data')
+      .upsert({
+        id: USERS_ROW_ID,
+        modules: users,
+        updated_at: new Date().toISOString()
+      });
+    return !error;
+  } catch(e) { return false; }
+}
+
+// Check saved session (7-day expiry)
+function getSavedSession() {
+  try {
+    const raw = localStorage.getItem(AUTH_SESSION_KEY);
+    if(!raw) return null;
+    const session = JSON.parse(raw);
+    if(!session.username || !session.expires_at) return null;
+    if(new Date(session.expires_at) < new Date()) {
+      localStorage.removeItem(AUTH_SESSION_KEY);
+      return null;
+    }
+    return session;
+  } catch(e) { return null; }
+}
+
+// Save session (7 days)
+function saveSession(username, displayName) {
+  const expires = new Date();
+  expires.setDate(expires.getDate() + 7);
+  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({
+    username: username,
+    display_name: displayName || username,
+    expires_at: expires.toISOString()
+  }));
+}
+
+function clearSession() {
+  localStorage.removeItem(AUTH_SESSION_KEY);
+}
+
+// Show/hide auth overlay
+function showAuthOverlay() {
+  document.getElementById('authOverlay').classList.remove('hidden');
+}
+function hideAuthOverlay() {
+  document.getElementById('authOverlay').classList.add('hidden');
+}
+function showLogin() {
+  document.getElementById('loginForm').style.display = '';
+  document.getElementById('registerForm').style.display = 'none';
+  clearAuthErrors();
+}
+function showRegister() {
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('registerForm').style.display = '';
+  clearAuthErrors();
+}
+function clearAuthErrors() {
+  document.querySelectorAll('.auth-error').forEach(e => { e.style.display = 'none'; e.textContent = ''; });
+}
+function showAuthError(id, msg) {
+  const el = document.getElementById(id);
+  if(el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+// Enter key support for auth forms
+document.addEventListener('keydown', function(e) {
+  if(e.key !== 'Enter') return;
+  const overlay = document.getElementById('authOverlay');
+  if(overlay.classList.contains('hidden')) return;
+  if(document.getElementById('loginForm').style.display !== 'none') {
+    handleLogin();
+  } else {
+    handleRegister();
+  }
+});
+
+// Login handler
+async function handleLogin() {
+  clearAuthErrors();
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if(!username) { showAuthError('loginUsernameError', '请输入用户名'); return; }
+  if(!password) { showAuthError('loginPasswordError', '请输入密码'); return; }
+
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = '登录中…';
+
+  const users = await fetchUsersRegistry();
+  const user = users.find(u => u.username === username);
+  if(!user) {
+    showAuthError('loginUsernameError', '用户不存在');
+    btn.disabled = false; btn.textContent = '登 录';
+    return;
+  }
+
+  const hash = await sha256(password);
+  if(hash !== user.password_hash) {
+    showAuthError('loginPasswordError', '密码错误');
+    btn.disabled = false; btn.textContent = '登 录';
+    return;
+  }
+
+  // Success
+  _currentUser = { username: user.username, display_name: user.display_name || user.username };
+  saveSession(_currentUser.username, _currentUser.display_name);
+  applyUserContext();
+  hideAuthOverlay();
+  btn.disabled = false; btn.textContent = '登 录';
+
+  // Boot app data
+  await bootAppData();
+}
+
+// Register handler
+async function handleRegister() {
+  clearAuthErrors();
+  const username = document.getElementById('regUsername').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const confirm = document.getElementById('regPasswordConfirm').value;
+
+  if(!username) { showAuthError('regUsernameError', '请输入用户名'); return; }
+  if(username.length > 20) { showAuthError('regUsernameError', '用户名不能超过 20 个字符'); return; }
+  // Check for invalid chars (allow Chinese, letters, numbers, underscore, hyphen)
+  if(!/^[\u4e00-\u9fa5a-zA-Z0-9_-]+$/.test(username)) {
+    showAuthError('regUsernameError', '用户名只能包含中文、英文、数字、下划线、连字符');
+    return;
+  }
+  if(!password) { showAuthError('regPasswordError', '请输入密码'); return; }
+  if(password.length < 6) { showAuthError('regPasswordError', '密码至少 6 位'); return; }
+  if(password !== confirm) { showAuthError('regConfirmError', '两次密码不一致'); return; }
+
+  const btn = document.getElementById('regBtn');
+  btn.disabled = true; btn.textContent = '创建中…';
+
+  const users = await fetchUsersRegistry();
+  if(users.find(u => u.username === username)) {
+    showAuthError('regUsernameError', '用户名已被占用');
+    btn.disabled = false; btn.textContent = '创建并登录';
+    return;
+  }
+
+  const hash = await sha256(password);
+  users.push({
+    username: username,
+    password_hash: hash,
+    display_name: username,
+    created_at: new Date().toISOString()
+  });
+
+  const saved = await saveUsersRegistry(users);
+  if(!saved) {
+    showAuthError('regUsernameError', '网络错误，请稍后重试');
+    btn.disabled = false; btn.textContent = '创建并登录';
+    return;
+  }
+
+  // Create starter schedule data for new user (demo modules)
+  if(_cloudAvailable && _supabaseClient) {
+    try {
+      const starterModules = buildNewUserModules();
+      await _supabaseClient.from('schedule_data').upsert({
+        id: username + '_main',
+        modules: starterModules,
+        time_slots: {},
+        updated_at: new Date().toISOString()
+      });
+    } catch(e) { console.warn('Failed to init user data:', e); }
+  }
+
+  // Success
+  _currentUser = { username: username, display_name: username };
+  saveSession(_currentUser.username, _currentUser.display_name);
+  applyUserContext();
+  hideAuthOverlay();
+  btn.disabled = false; btn.textContent = '创建并登录';
+
+  // Boot app data (will be empty for new user)
+  await bootAppData();
+}
+
+// Logout handler
+function handleLogout(e) {
+  if(e) e.stopPropagation();
+  clearSession();
+  _currentUser = null;
+  // Reset app state
+  MODULES = JSON.parse(JSON.stringify(DEFAULT_MODULES));
+  _cloudReady = false;
+  _userHasEdited = false;
+  // Show login
+  document.getElementById('userMenu').classList.remove('show');
+  showAuthOverlay();
+  showLogin();
+  // Clear inputs
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+// Apply user context to header
+function applyUserContext() {
+  if(!_currentUser) return;
+  const avatar = document.getElementById('userAvatar');
+  const name = document.getElementById('userName');
+  const title = document.querySelector('.header h1');
+  // Use first character as avatar
+  const firstChar = _currentUser.display_name.charAt(0).toUpperCase();
+  avatar.textContent = firstChar;
+  name.textContent = _currentUser.display_name;
+  title.textContent = '📋 ' + _currentUser.display_name + ' 的日程管理';
+  document.title = _currentUser.display_name + ' 的日程管理';
+}
+
+// Toggle user menu
+function toggleUserMenu() {
+  document.getElementById('userMenu').classList.toggle('show');
+}
+// Close menu on outside click
+document.addEventListener('click', function(e) {
+  if(!e.target.closest('.user-badge')) {
+    document.getElementById('userMenu').classList.remove('show');
+  }
+});
+
+// Dynamic row IDs based on current user
+function getDataRowId() {
+  return _currentUser ? _currentUser.username + '_main' : 'letty_main';
+}
+function getVersionRowId() {
+  return _currentUser ? _currentUser.username + '_versions' : 'letty_versions';
+}
+function getStoreKey() {
+  return _currentUser ? _currentUser.username + '_schedule_v3' : 'letty_schedule_v3';
+}
+function getSlotKey() {
+  return _currentUser ? _currentUser.username + '_time_slots' : 'letty_time_slots';
+}
+function getVersionKey() {
+  return _currentUser ? _currentUser.username + '_versions' : 'letty_versions';
+}
+
+// ================================================================
+// DATA ROW IDs (now dynamic — use functions above)
+// ================================================================
+
+// --- Sync state ---
+let _cloudReady = false;       // True after first cloud load attempt completes
+let _userHasEdited = false;    // True once user makes any change this session
+let _pendingSync = false;      // True when local has unsynced changes (offline queue)
+let _localUpdatedAt = null;    // ISO timestamp of last known state — used for version comparison
+let _cloudSyncTimer = null;    // Debounce timer for cloud push
+let _isSyncing = false;        // Prevent concurrent sync operations
+let _pullInProgress = false;   // Prevent concurrent pull operations
+
+// --- Sync status UI ---
 let _lastSyncStatus = 'init';
 function showSyncStatus(status) {
   _lastSyncStatus = status;
   let el = document.getElementById('syncStatus');
   if(!el) {
-    // Insert into the header bar, next to the title
     const headerLeft = document.querySelector('.header-left');
     if(headerLeft) {
       el = document.createElement('div');
@@ -1001,30 +1679,27 @@ function showSyncStatus(status) {
       el.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;margin-left:12px;transition:all .3s ease;cursor:default;white-space:nowrap;vertical-align:middle;';
       headerLeft.appendChild(el);
     } else {
-      // Fallback: fixed position
       el = document.createElement('div');
       el.id = 'syncStatus';
       el.style.cssText = 'position:fixed;top:14px;left:280px;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;z-index:200;transition:all .3s ease;cursor:default;white-space:nowrap;';
       document.body.appendChild(el);
     }
   }
-  if(status === 'saving') {
-    el.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⟳</span> 同步中';
-    el.style.background = 'rgba(0,122,255,0.1)'; el.style.color = '#007aff';
-  } else if(status === 'saved') {
-    el.innerHTML = '☁️ 已同步';
-    el.style.background = 'rgba(52,199,89,0.1)'; el.style.color = '#34c759';
-  } else if(status === 'error') {
-    el.innerHTML = '⚠️ 同步失败';
-    el.style.background = 'rgba(255,59,48,0.1)'; el.style.color = '#ff3b30';
-    el.title = '云端同步失败，数据已本地保存。点击重试。';
-    el.onclick = () => syncToCloud();
-  } else if(status === 'offline') {
-    el.innerHTML = '📴 离线';
-    el.style.background = 'rgba(255,149,0,0.1)'; el.style.color = '#ff9500';
-    el.title = '离线模式，数据仅保存在本地';
-  }
-  // Add spin animation if not exists
+  const styles = {
+    saving:  { html:'<span style="display:inline-block;animation:spin 1s linear infinite">⟳</span> 同步中', bg:'rgba(0,122,255,0.1)', color:'#007aff', title:'' },
+    saved:   { html:'☁️ 已同步', bg:'rgba(52,199,89,0.1)', color:'#34c759', title:'' },
+    error:   { html:'⚠️ 同步失败 <span style="text-decoration:underline;cursor:pointer">重试</span>', bg:'rgba(255,59,48,0.1)', color:'#ff3b30', title:'云端同步失败，数据已本地保存' },
+    offline: { html:'📴 离线（本地已保存）', bg:'rgba(255,149,0,0.1)', color:'#ff9500', title:'离线模式，数据仅保存在本地，联网后自动同步' },
+    pulling: { html:'<span style="display:inline-block;animation:spin 1s linear infinite">⟳</span> 拉取中', bg:'rgba(88,86,214,0.1)', color:'#5856d6', title:'正在从云端获取最新数据' },
+    conflict:{ html:'⚠️ 已更新到最新版', bg:'rgba(255,204,0,0.15)', color:'#ff9500', title:'检测到其他窗口的更新，已自动同步' },
+  };
+  const s = styles[status] || styles.saved;
+  el.innerHTML = s.html;
+  el.style.background = s.bg;
+  el.style.color = s.color;
+  el.title = s.title;
+  el.onclick = status === 'error' ? () => pushToCloud() : null;
+  // Spin animation
   if(!document.getElementById('syncSpinStyle')) {
     const style = document.createElement('style');
     style.id = 'syncSpinStyle';
@@ -1033,74 +1708,136 @@ function showSyncStatus(status) {
   }
 }
 
-// Debounced cloud save — waits 500ms after last change then syncs
+// ================================================================
+// CLOUD PUSH — save local data to cloud
+// ================================================================
 function scheduleCloudSync() {
   if(_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
-  _cloudSyncTimer = setTimeout(async () => {
-    await syncToCloud();
-  }, 500);
+  _cloudSyncTimer = setTimeout(() => pushToCloud(), 500);
 }
 
-async function syncToCloud() {
+async function pushToCloud() {
   if(!_cloudAvailable || !_supabaseClient) {
+    _pendingSync = true;
     showSyncStatus('offline');
     return;
   }
+  if(_isSyncing) {
+    // Already syncing, schedule another round
+    _pendingSync = true;
+    return;
+  }
+  _isSyncing = true;
   try {
     showSyncStatus('saving');
+    const now = new Date().toISOString();
+    _localUpdatedAt = now;
     const payload = {
-      id: DATA_ROW_ID,
+      id: getDataRowId(),
       modules: MODULES,
-      time_slots: JSON.parse(localStorage.getItem(SLOT_KEY) || '{}'),
-      updated_at: new Date().toISOString()
+      time_slots: JSON.parse(localStorage.getItem(getSlotKey()) || '{}'),
+      updated_at: now
     };
     const { error } = await _supabaseClient
       .from('schedule_data')
       .upsert(payload, { onConflict: 'id' });
     if(error) throw error;
+    _pendingSync = false;
+    // Update localStorage cache
+    localStorage.setItem(getStoreKey(), JSON.stringify({
+      modules: MODULES, updated_at: now
+    }));
     showSyncStatus('saved');
+    console.log(`☁️ Pushed to cloud. updated_at=${now}`);
+    // Auto-save version snapshot (debounced — skip if last snapshot was <30s ago)
+    if(!_isPreviewingVersion) {
+      const lastVer = _versions[0];
+      const shouldSave = !lastVer || (Date.now() - new Date(lastVer.timestamp).getTime() > 30000);
+      if(shouldSave) {
+        saveVersionSnapshot().catch(e => console.warn('Version save failed:', e));
+      }
+    }
   } catch(e) {
-    console.error('Cloud sync failed:', e);
+    console.error('Cloud push failed:', e);
+    _pendingSync = true;
     showSyncStatus('error');
+  } finally {
+    _isSyncing = false;
   }
 }
 
-async function loadFromCloud() {
+// ================================================================
+// CLOUD PULL — fetch latest data from cloud
+// ================================================================
+async function pullFromCloud(opts = {}) {
+  const { silent = false, isInit = false } = opts;
   if(!_cloudAvailable || !_supabaseClient) {
-    console.log('Cloud not available, using localStorage only');
-    return false;
+    console.log('Cloud not available');
+    return { ok: false, reason: 'unavailable' };
   }
+  if(_pullInProgress && !isInit) {
+    return { ok: false, reason: 'in_progress' };
+  }
+  _pullInProgress = true;
   try {
+    if(!silent) showSyncStatus('pulling');
     const { data, error } = await _supabaseClient
       .from('schedule_data')
       .select('*')
-      .eq('id', DATA_ROW_ID)
+      .eq('id', getDataRowId())
       .single();
     if(error) {
       if(error.code === 'PGRST116') {
-        // No row yet — first time use, will create on first save
-        console.log('No cloud data yet, using local data');
-        return false;
+        // No row yet — first time use
+        console.log('No cloud data yet');
+        return { ok: false, reason: 'no_data' };
       }
       throw error;
     }
-    if(data && data.modules) {
-      // Cloud is single source of truth on page load — always use cloud data
-      console.log('☁️ Cloud data loaded. Cloud updated_at:', data.updated_at);
+    if(!data || !data.modules) {
+      return { ok: false, reason: 'empty' };
+    }
+    const cloudTime = data.updated_at ? new Date(data.updated_at).getTime() : 0;
+    const localTime = _localUpdatedAt ? new Date(_localUpdatedAt).getTime() : 0;
+    console.log(`☁️ Cloud: ${data.updated_at} (${cloudTime}). Local: ${_localUpdatedAt} (${localTime})`);
+    if(isInit) {
+      // On page load, always adopt cloud data (cloud is source of truth)
+      console.log('☁️ INIT: adopting cloud data');
       MODULES = data.modules;
       _localUpdatedAt = data.updated_at;
-      // Update localStorage cache
-      localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: data.updated_at }));
+      localStorage.setItem(getStoreKey(), JSON.stringify({
+        modules: MODULES, updated_at: data.updated_at
+      }));
       if(data.time_slots) {
-        localStorage.setItem(SLOT_KEY, JSON.stringify(data.time_slots));
+        localStorage.setItem(getSlotKey(), JSON.stringify(data.time_slots));
       }
-      return true;
+      return { ok: true, updated: true };
     }
-    return false;
+    // Non-init: compare timestamps
+    if(cloudTime > localTime) {
+      // Cloud is newer — adopt it (another window pushed newer data)
+      console.log(`☁️ Cloud is newer, adopting cloud data`);
+      MODULES = data.modules;
+      _localUpdatedAt = data.updated_at;
+      localStorage.setItem(getStoreKey(), JSON.stringify({
+        modules: MODULES, updated_at: data.updated_at
+      }));
+      if(data.time_slots) {
+        localStorage.setItem(getSlotKey(), JSON.stringify(data.time_slots));
+      }
+      if(!silent) showSyncStatus('conflict');
+      return { ok: true, updated: true };
+    } else {
+      // Local is same or newer — we're in sync
+      if(!silent) showSyncStatus('saved');
+      return { ok: true, updated: false };
+    }
   } catch(e) {
-    console.error('Cloud load failed:', e);
-    showSyncStatus('offline');
-    return false;
+    console.error('Cloud pull failed:', e);
+    if(!silent) showSyncStatus('offline');
+    return { ok: false, reason: 'error' };
+  } finally {
+    _pullInProgress = false;
   }
 }
 
@@ -1108,22 +1845,19 @@ async function loadFromCloud() {
 // STATE (localStorage cache + Supabase cloud)
 // ================================================================
 let currentView = 'week';
-const STORE_KEY = 'letty_schedule_v3';
-const SLOT_KEY = 'letty_time_slots';
-
-let _localUpdatedAt = null; // Track local data freshness
+// STORE_KEY / SLOT_KEY are now dynamic — use getStoreKey() / getSlotKey()
 
 function loadState() {
-  // Load from localStorage first (fast, offline-capable)
-  const raw = localStorage.getItem(STORE_KEY);
-  if (!raw) return;
+  // Load from localStorage (fast, offline-capable)
+  const raw = localStorage.getItem(getStoreKey());
+  if (!raw) return false;
   try {
     const saved = JSON.parse(raw);
     if (saved.modules) MODULES = saved.modules;
     if (saved.updated_at) _localUpdatedAt = saved.updated_at;
-  } catch(e) {}
-  // Restore _uid counter to avoid ID collisions with existing data
-  restoreUidCounter();
+    restoreUidCounter();
+    return true;
+  } catch(e) { return false; }
 }
 
 function restoreUidCounter() {
@@ -1142,13 +1876,531 @@ function restoreUidCounter() {
 }
 
 function saveState() {
-  // Always save to localStorage with timestamp (instant, offline)
+  // Block saves during version preview (read-only mode)
+  if(_isPreviewingVersion) {
+    toast('⚠️ 预览模式下无法编辑，请先退出预览');
+    return;
+  }
+  // 1. Instantly save to localStorage (never blocks UI)
   const now = new Date().toISOString();
-  localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: now }));
+  localStorage.setItem(getStoreKey(), JSON.stringify({
+    modules: MODULES, updated_at: now
+  }));
   _localUpdatedAt = now;
-  _userHasEdited = true; // Mark that user made real changes this session
-  // Schedule async cloud sync
-  scheduleCloudSync();
+  _userHasEdited = true;
+  // 2. Schedule debounced cloud push
+  if(_cloudReady) {
+    scheduleCloudSync();
+  } else {
+    _pendingSync = true;
+  }
+}
+
+// ================================================================
+// VERSION MANAGEMENT — 版本历史 (最多保留 5 个)
+// ================================================================
+// VERSION_KEY / VERSION_ROW_ID are now dynamic — use getVersionKey() / getVersionRowId()
+const MAX_VERSIONS = 5;
+
+let _versions = [];              // Array of version snapshots
+let _selectedVersionIdx = -1;    // Currently selected version in panel
+let _isPreviewingVersion = false;
+let _previewBackup = null;       // Backup of real data while previewing
+
+// --- Save a version snapshot (called after each successful cloud push) ---
+async function saveVersionSnapshot() {
+  const snapshot = {
+    id: 'v_' + Date.now(),
+    timestamp: new Date().toISOString(),
+    modules: JSON.parse(JSON.stringify(MODULES)),
+    timeSlots: JSON.parse(localStorage.getItem(getSlotKey()) || '{}'),
+    summary: generateVersionSummary()
+  };
+
+  // Add to front, limit to MAX_VERSIONS
+  _versions.unshift(snapshot);
+  if(_versions.length > MAX_VERSIONS) {
+    _versions = _versions.slice(0, MAX_VERSIONS);
+  }
+
+  // Save to localStorage
+  localStorage.setItem(getVersionKey(), JSON.stringify(_versions));
+
+  // Push to cloud (separate row)
+  if(_cloudAvailable && _supabaseClient) {
+    try {
+      await _supabaseClient
+        .from('schedule_data')
+        .upsert({
+          id: getVersionRowId(),
+          modules: _versions, // reuse modules column to store versions array
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+      console.log('📸 Version snapshot saved to cloud');
+    } catch(e) {
+      console.warn('Version cloud save failed:', e);
+    }
+  }
+}
+
+// Generate a brief summary for the version
+function generateVersionSummary() {
+  let totalTodos = 0, doneTodos = 0, totalInfos = 0;
+  MODULES.forEach(m => {
+    totalTodos += m.todos.length;
+    doneTodos += m.todos.filter(t => t.status === 'done').length;
+    totalInfos += (m.infos || []).length;
+  });
+  return `${MODULES.length} 模块 · ${totalTodos} 待办(${doneTodos}完成) · ${totalInfos} 信息`;
+}
+
+// --- Load versions from cloud or localStorage ---
+async function loadVersions() {
+  // Try cloud first
+  if(_cloudAvailable && _supabaseClient) {
+    try {
+      const { data, error } = await _supabaseClient
+        .from('schedule_data')
+        .select('*')
+        .eq('id', getVersionRowId())
+        .single();
+      if(!error && data && data.modules && Array.isArray(data.modules)) {
+        _versions = data.modules;
+        localStorage.setItem(getVersionKey(), JSON.stringify(_versions));
+        console.log(`📸 Loaded ${_versions.length} versions from cloud`);
+        return;
+      }
+    } catch(e) {
+      console.warn('Version cloud load failed:', e);
+    }
+  }
+
+  // Fallback to localStorage
+  try {
+    const raw = localStorage.getItem(getVersionKey());
+    if(raw) _versions = JSON.parse(raw);
+  } catch(e) {
+    _versions = [];
+  }
+}
+
+// --- UI: Open version panel ---
+async function openVersionPanel() {
+  if(_isPreviewingVersion) exitVersionPreview();
+  _selectedVersionIdx = -1;
+
+  const overlay = document.getElementById('versionOverlay');
+  overlay.classList.add('active');
+
+  // Show loading
+  document.getElementById('versionBody').innerHTML = '<div class="version-empty">加载中…</div>';
+  document.getElementById('versionActions').style.display = 'none';
+
+  await loadVersions();
+  renderVersionList();
+}
+
+function closeVersionPanel() {
+  document.getElementById('versionOverlay').classList.remove('active');
+  _selectedVersionIdx = -1;
+}
+
+// Click overlay to close
+document.addEventListener('click', (e) => {
+  if(e.target.id === 'versionOverlay') closeVersionPanel();
+});
+
+function renderVersionList() {
+  const body = document.getElementById('versionBody');
+  const actions = document.getElementById('versionActions');
+
+  if(!_versions || _versions.length === 0) {
+    body.innerHTML = '<div class="version-empty">暂无历史版本<br><span style="font-size:12px;margin-top:6px;display:block;color:var(--text-tri)">每次数据同步到云端时会自动保存版本快照</span></div>';
+    actions.style.display = 'none';
+    return;
+  }
+
+  let h = '';
+  _versions.forEach((v, i) => {
+    const d = new Date(v.timestamp);
+    const timeStr = formatVersionTime(d);
+    const relStr = getRelativeTime(d);
+    const isFirst = i === 0;
+    const isSelected = i === _selectedVersionIdx;
+
+    h += `<div class="version-item${isSelected ? ' active' : ''}" onclick="selectVersion(${i})">
+      <div class="version-item-icon">${isFirst ? '📌' : '📷'}</div>
+      <div class="version-item-info">
+        <div class="version-item-time">${timeStr}</div>
+        <div class="version-item-meta">${relStr} · ${v.summary || '无摘要'}</div>
+      </div>
+      ${isFirst ? '<span class="version-item-tag current">最新</span>' : '<span class="version-item-tag auto">自动保存</span>'}
+    </div>`;
+  });
+
+  body.innerHTML = h;
+  actions.style.display = 'flex';
+  updateVersionButtons();
+}
+
+function selectVersion(idx) {
+  _selectedVersionIdx = idx;
+  // Re-render to update active state
+  renderVersionList();
+}
+
+function updateVersionButtons() {
+  const previewBtn = document.getElementById('versionPreviewBtn');
+  const restoreBtn = document.getElementById('versionRestoreBtn');
+  const hasSelection = _selectedVersionIdx >= 0;
+  previewBtn.disabled = !hasSelection;
+  restoreBtn.disabled = !hasSelection;
+}
+
+function formatVersionTime(d) {
+  const now = new Date();
+  const y = d.getFullYear(), mo = d.getMonth(), da = d.getDate();
+  const ny = now.getFullYear(), nmo = now.getMonth(), nda = now.getDate();
+
+  let dateStr;
+  if(y === ny && mo === nmo && da === nda) {
+    dateStr = '今天';
+  } else {
+    const yesterday = new Date(now); yesterday.setDate(nda - 1);
+    if(y === yesterday.getFullYear() && mo === yesterday.getMonth() && da === yesterday.getDate()) {
+      dateStr = '昨天';
+    } else {
+      dateStr = `${mo + 1}月${da}日`;
+    }
+  }
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${dateStr} ${hh}:${mm}:${ss}`;
+}
+
+function getRelativeTime(d) {
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if(mins < 1) return '刚刚';
+  if(mins < 60) return `${mins} 分钟前`;
+  const hrs = Math.floor(mins / 60);
+  if(hrs < 24) return `${hrs} 小时前`;
+  const days = Math.floor(hrs / 24);
+  return `${days} 天前`;
+}
+
+// ================================================================
+// VERSION DIFF — compute differences between current and old version
+// ================================================================
+// _versionDiff stores the computed diff while in preview mode
+// Structure: { todos: { id -> 'added'|'removed'|'changed' }, infos: { id -> 'added'|'removed'|'changed' }, modules: { id -> 'added'|'removed' } }
+let _versionDiff = null;
+
+function computeVersionDiff(currentModules, oldModules) {
+  const diff = { todos: {}, infos: {}, modules: {} };
+
+  // Build lookup maps for current data
+  const curModMap = {};
+  const curTodoMap = {};
+  const curInfoMap = {};
+  currentModules.forEach(m => {
+    curModMap[m.id] = m;
+    m.todos.forEach(t => { curTodoMap[t.id] = { todo: t, modId: m.id }; });
+    (m.infos || []).forEach(i => { curInfoMap[i.id] = { info: i, modId: m.id }; });
+  });
+
+  // Build lookup maps for old (preview) data
+  const oldModMap = {};
+  const oldTodoMap = {};
+  const oldInfoMap = {};
+  oldModules.forEach(m => {
+    oldModMap[m.id] = m;
+    m.todos.forEach(t => { oldTodoMap[t.id] = { todo: t, modId: m.id }; });
+    (m.infos || []).forEach(i => { oldInfoMap[i.id] = { info: i, modId: m.id }; });
+  });
+
+  // --- Module-level diff ---
+  for(const mId in oldModMap) {
+    if(!curModMap[mId]) {
+      diff.modules[mId] = 'added'; // old has it, current doesn't → "will be recovered"
+    }
+  }
+  for(const mId in curModMap) {
+    if(!oldModMap[mId]) {
+      diff.modules[mId] = 'removed'; // current has it, old doesn't → "will be lost"
+    }
+  }
+
+  // --- Todo-level diff ---
+  // "added" = exists in old version but NOT in current → restoring will bring it back (green)
+  for(const tId in oldTodoMap) {
+    if(!curTodoMap[tId]) {
+      diff.todos[tId] = 'added';
+    } else {
+      // Both exist — check if content or status changed
+      const oldT = oldTodoMap[tId].todo;
+      const curT = curTodoMap[tId].todo;
+      if(oldT.text !== curT.text || oldT.status !== curT.status || oldT.date !== curT.date || oldT.note !== curT.note) {
+        diff.todos[tId] = 'changed';
+      }
+    }
+  }
+  // "removed" = exists in current but NOT in old → restoring will lose it (red)
+  // We need to inject "ghost" items in the preview for these
+  for(const tId in curTodoMap) {
+    if(!oldTodoMap[tId]) {
+      diff.todos[tId] = 'removed';
+    }
+  }
+
+  // --- Info-level diff ---
+  for(const iId in oldInfoMap) {
+    if(!curInfoMap[iId]) {
+      diff.infos[iId] = 'added';
+    } else {
+      const oldI = oldInfoMap[iId].info;
+      const curI = curInfoMap[iId].info;
+      if(oldI.text !== curI.text || oldI.highlighted !== curI.highlighted) {
+        diff.infos[iId] = 'changed';
+      }
+    }
+  }
+  for(const iId in curInfoMap) {
+    if(!oldInfoMap[iId]) {
+      diff.infos[iId] = 'removed';
+    }
+  }
+
+  return diff;
+}
+
+// Build "ghost" items for removed todos/infos (items that exist in current but will be lost)
+function injectGhostItems(currentModules, oldModules) {
+  const oldModMap = {};
+  oldModules.forEach(m => { oldModMap[m.id] = m; });
+
+  const curTodoMap = {};
+  const curInfoMap = {};
+  currentModules.forEach(m => {
+    m.todos.forEach(t => { curTodoMap[t.id] = { todo: t, modId: m.id }; });
+    (m.infos || []).forEach(i => { curInfoMap[i.id] = { info: i, modId: m.id }; });
+  });
+
+  // For each module in oldModules, append ghost todos/infos that exist in current but not in old
+  oldModules.forEach(m => {
+    const curMod = currentModules.find(cm => cm.id === m.id);
+    if(!curMod) return;
+
+    // Ghost todos: in current module but not in old module
+    curMod.todos.forEach(t => {
+      const existsInOld = m.todos.some(ot => ot.id === t.id);
+      if(!existsInOld) {
+        m.todos.push({ ...JSON.parse(JSON.stringify(t)), _ghost: true });
+      }
+    });
+
+    // Ghost infos: in current module but not in old module
+    (curMod.infos || []).forEach(i => {
+      const existsInOld = (m.infos || []).some(oi => oi.id === i.id);
+      if(!existsInOld) {
+        if(!m.infos) m.infos = [];
+        m.infos.push({ ...JSON.parse(JSON.stringify(i)), _ghost: true });
+      }
+    });
+  });
+
+  // Ghost modules: modules that exist in current but not in old
+  currentModules.forEach(cm => {
+    if(!oldModMap[cm.id]) {
+      const ghost = JSON.parse(JSON.stringify(cm));
+      ghost._ghost = true;
+      ghost.todos.forEach(t => { t._ghost = true; });
+      (ghost.infos || []).forEach(i => { i._ghost = true; });
+      oldModules.push(ghost);
+    }
+  });
+}
+
+function getDiffClass(id, type) {
+  if(!_versionDiff) return '';
+  const map = type === 'todo' ? _versionDiff.todos : _versionDiff.infos;
+  const d = map[id];
+  if(d === 'added') return ' diff-added';
+  if(d === 'removed') return ' diff-removed';
+  if(d === 'changed') return ' diff-changed';
+  return '';
+}
+
+function getModDiffClass(modId) {
+  if(!_versionDiff) return '';
+  const d = _versionDiff.modules[modId];
+  if(d === 'added') return '<span class="diff-mod-badge diff-mod-new">找回的模块</span>';
+  if(d === 'removed') return '<span class="diff-mod-badge diff-mod-removed">未插入</span>';
+  return '';
+}
+
+function getDiffSummary() {
+  if(!_versionDiff) return '';
+  let added = 0, removed = 0, changed = 0;
+  Object.values(_versionDiff.todos).forEach(d => {
+    if(d === 'added') added++;
+    else if(d === 'removed') removed++;
+    else if(d === 'changed') changed++;
+  });
+  Object.values(_versionDiff.infos).forEach(d => {
+    if(d === 'added') added++;
+    else if(d === 'removed') removed++;
+    else if(d === 'changed') changed++;
+  });
+  const parts = [];
+  if(added) parts.push(`${added} 项找回`);
+  if(removed) parts.push(`${removed} 项未插入`);
+  if(changed) parts.push(`${changed} 项有变化`);
+  return parts.length ? parts.join('，') : '无差异';
+}
+
+// --- Preview a version (read-only, non-destructive) ---
+function previewSelectedVersion() {
+  if(_selectedVersionIdx < 0) return;
+  const ver = _versions[_selectedVersionIdx];
+  if(!ver) return;
+
+  // Backup current real data
+  _previewBackup = {
+    modules: JSON.parse(JSON.stringify(MODULES)),
+    timeSlots: localStorage.getItem(getSlotKey()),
+    localUpdatedAt: _localUpdatedAt,
+    versionIdx: _selectedVersionIdx
+  };
+
+  // Compute diff: current vs old version
+  const currentMods = JSON.parse(JSON.stringify(MODULES));
+  const oldMods = JSON.parse(JSON.stringify(ver.modules));
+  _versionDiff = computeVersionDiff(currentMods, oldMods);
+
+  // Apply version data (temporarily, NOT saving)
+  MODULES = JSON.parse(JSON.stringify(ver.modules));
+
+  // Inject ghost items (items that exist in current but not old, shown in red)
+  injectGhostItems(currentMods, MODULES);
+
+  if(ver.timeSlots) {
+    localStorage.setItem(getSlotKey(), JSON.stringify(ver.timeSlots));
+  }
+
+  _isPreviewingVersion = true;
+
+  // Close panel
+  closeVersionPanel();
+
+  // Show preview banner with diff summary
+  const banner = document.getElementById('versionPreviewBanner');
+  const d = new Date(ver.timestamp);
+  const diffSummary = getDiffSummary();
+  document.getElementById('vpBannerText').innerHTML =
+    `📷 正在预览「${formatVersionTime(d)}」的版本` +
+    `<span class="diff-legend">` +
+      `<span class="diff-legend-item"><span class="diff-legend-dot" style="background:#34c759"></span>找回</span>` +
+      `<span class="diff-legend-item"><span class="diff-legend-dot" style="background:#ff3b30"></span>未插入</span>` +
+      `<span class="diff-legend-item"><span class="diff-legend-dot" style="background:#ff9500"></span>有变化</span>` +
+      `<span style="opacity:0.8">· ${diffSummary}</span>` +
+    `</span>`;
+  banner.classList.add('active');
+
+  // Shift main content down
+  document.querySelector('.header').style.marginTop = '42px';
+
+  // Re-render
+  restoreUidCounter();
+  normalizeInfoWeeks();
+  if(currentView === 'week') renderWeek(); else renderDay();
+
+  toast('👁️ 已进入版本预览模式（只读，差异已标注）');
+}
+
+function exitVersionPreview() {
+  if(!_isPreviewingVersion || !_previewBackup) return;
+
+  // Restore real data
+  MODULES = _previewBackup.modules;
+  if(_previewBackup.timeSlots !== null) {
+    localStorage.setItem(getSlotKey(), _previewBackup.timeSlots);
+  }
+  _localUpdatedAt = _previewBackup.localUpdatedAt;
+
+  _isPreviewingVersion = false;
+  _previewBackup = null;
+  _versionDiff = null; // Clear diff highlights
+
+  // Hide banner
+  document.getElementById('versionPreviewBanner').classList.remove('active');
+  document.querySelector('.header').style.marginTop = '';
+
+  // Re-render
+  restoreUidCounter();
+  normalizeInfoWeeks();
+  if(currentView === 'week') renderWeek(); else renderDay();
+
+  toast('✅ 已退出版本预览');
+}
+
+function restoreFromPreview() {
+  if(!_isPreviewingVersion) return;
+  if(!confirm('确定恢复到此版本？当前数据将被覆盖。\n建议先导出当前数据作为备份。')) return;
+
+  // Remove ghost items before restoring (only keep real old data)
+  MODULES.forEach(m => {
+    m.todos = m.todos.filter(t => !t._ghost);
+    if(m.infos) m.infos = m.infos.filter(i => !i._ghost);
+  });
+  MODULES = MODULES.filter(m => !m._ghost);
+
+  // The preview data is already in MODULES, just persist it
+  _isPreviewingVersion = false;
+  _previewBackup = null;
+  _versionDiff = null;
+
+  // Hide banner
+  document.getElementById('versionPreviewBanner').classList.remove('active');
+  document.querySelector('.header').style.marginTop = '';
+
+  // Save and sync
+  restoreUidCounter();
+  normalizeInfoWeeks();
+  deduplicateTodos();
+  saveState();
+  if(currentView === 'week') renderWeek(); else renderDay();
+  toast('✅ 已恢复到历史版本');
+}
+
+// --- Restore directly from panel (without entering preview) ---
+async function restoreSelectedVersion() {
+  if(_selectedVersionIdx < 0) return;
+  const ver = _versions[_selectedVersionIdx];
+  if(!ver) return;
+
+  const d = new Date(ver.timestamp);
+  if(!confirm(`确定恢复到「${formatVersionTime(d)}」的版本？\n当前数据将被覆盖。建议先导出备份。`)) return;
+
+  // Apply version data
+  MODULES = JSON.parse(JSON.stringify(ver.modules));
+  if(ver.timeSlots) {
+    localStorage.setItem(getSlotKey(), JSON.stringify(ver.timeSlots));
+  }
+
+  // Close panel
+  closeVersionPanel();
+  _versionDiff = null;
+
+  // Save and sync
+  restoreUidCounter();
+  normalizeInfoWeeks();
+  deduplicateTodos();
+  saveState();
+  if(currentView === 'week') renderWeek(); else renderDay();
+
+  toast('✅ 已恢复到历史版本');
 }
 
 // ================================================================
@@ -1160,7 +2412,7 @@ function exportData() {
     _version: 3,
     _exportedAt: new Date().toISOString(),
     modules: MODULES,
-    timeSlots: JSON.parse(localStorage.getItem(SLOT_KEY) || '{}')
+    timeSlots: JSON.parse(localStorage.getItem(getSlotKey()) || '{}')
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -1192,7 +2444,7 @@ function importData(evt) {
         saveState();
       }
       if (data.timeSlots) {
-        localStorage.setItem(SLOT_KEY, JSON.stringify(data.timeSlots));
+        localStorage.setItem(getSlotKey(), JSON.stringify(data.timeSlots));
       }
       // Restore _uid counter
       let maxId = _uid;
@@ -1239,31 +2491,19 @@ function autoResizeTextarea(el) {
     el.style.height = '24px';
     return;
   }
-  el.style.height = '24px';
+  // Temporarily allow scroll so scrollHeight reflects true content height
+  el.style.overflow = 'auto';
+  el.style.height = '0';
   const sh = el.scrollHeight;
   el.style.height = Math.max(24, sh) + 'px';
+  el.style.overflow = 'hidden';
 }
 
 // 页面渲染后批量初始化所有 textarea 高度（用 rAF 避免阻塞滚动）
 function initAllTextareas() {
   requestAnimationFrame(() => {
     const els = document.querySelectorAll('.info-note-area, .i-text-area');
-    // 批量写
-    els.forEach(el => {
-      if (!el.value || el.value.trim() === '') {
-        el.style.height = '24px';
-      } else {
-        el.style.height = '24px';
-      }
-    });
-    // 批量读 + 写（减少交替 reflow）
-    requestAnimationFrame(() => {
-      els.forEach(el => {
-        if (el.value && el.value.trim() !== '') {
-          el.style.height = Math.max(24, el.scrollHeight) + 'px';
-        }
-      });
-    });
+    els.forEach(el => autoResizeTextarea(el));
   });
 }
 
@@ -1363,6 +2603,21 @@ function confirmAddModule() {
   toast(`✅ 已添加「${selectedEmoji} ${name}」模块`);
 }
 
+// Delete a module (with confirmation)
+async function deleteModule(modId) {
+  const mod = MODULES.find(m => m.id === modId);
+  if(!mod) return;
+  const totalItems = mod.todos.length + mod.infos.length;
+  let msg = `确定删除「${mod.emoji} ${mod.name}」模块吗？`;
+  if(totalItems > 0) msg += `\n\n⚠️ 该模块包含 ${mod.todos.length} 条待办和 ${mod.infos.length} 条备注，删除后不可恢复。`;
+  const ok = await showConfirm(msg);
+  if(!ok) return;
+  MODULES = MODULES.filter(m => m.id !== modId);
+  saveState();
+  if(currentView === 'week') renderWeek(); else renderDay();
+  toast(`🗑️ 已删除「${mod.emoji} ${mod.name}」`);
+}
+
 // Close modal on overlay click
 document.addEventListener('click', (e) => {
   const modal = document.getElementById('addModuleModal');
@@ -1421,11 +2676,12 @@ function renderWeek() {
 
     h += `<div class="module-card">`;
     h += `<div class="module-head">`;
-    h += `<div class="module-title"><span class="m-emoji">${mod.emoji}</span><span class="m-name">${mod.name}</span></div>`;
+    h += `<div class="module-title"><span class="m-emoji">${mod.emoji}</span><span class="m-name">${mod.name}</span>${getModDiffClass(mod.id)}</div>`;
     h += `<div class="m-badges">`;
     if(notDone.length) h+=`<span class="badge todo-b">${notDone.length} 待办</span>`;
     if(done.length) h+=`<span class="badge done-b">${done.length} 完成</span>`;
     if(weekInfos.length) h+=`<span class="badge info-b">${weekInfos.length} 信息</span>`;
+    h += `<button class="mod-del-btn" title="删除模块" onclick="event.stopPropagation();deleteModule('${mod.id}')">✕</button>`;
     h += `</div></div>`;
 
     h += `<div class="module-body" id="body-${mod.id}">`;
@@ -1480,6 +2736,10 @@ function todoRowHTML(t, weekDates, todayStr, context, hiddenSlotIds, slotLabel) 
   const cls = ['row','todo'];
   if(isDone) cls.push('completed');
 
+  // Version diff highlight
+  const diffCls = getDiffClass(t.id, 'todo');
+  if(diffCls) cls.push(diffCls.trim());
+
   // Only highlight in week view
   if(context === 'week') {
     if(isToday && !isDone) cls.push('today-hl');
@@ -1532,8 +2792,9 @@ function todoRowHTML(t, weekDates, todayStr, context, hiddenSlotIds, slotLabel) 
 }
 
 function infoRowHTML(i) {
+  const infoDiffCls = getDiffClass(i.id, 'info');
   return `
-    <div class="row info ${i.highlighted?'highlighted':''}" data-id="${i.id}" data-type="info">
+    <div class="row info ${i.highlighted?'highlighted':''} ${infoDiffCls.trim()}" data-id="${i.id}" data-type="info">
       <div class="info-dot"></div>
       <div class="row-body">
         <textarea class="info-note-area" rows="1" onblur="editInfoText('${i.id}',this.value)" oninput="autoResizeTextarea(this)" placeholder="写点什么…">${esc(i.text)}</textarea>
@@ -1559,19 +2820,7 @@ function renderDay() {
   let h = '';
 
   // Day Header
-  h += `<div class="day-header fade-in"><div><div class="day-date">${d.getMonth()+1}月${d.getDate()}日</div><div class="day-sub">星期${wd[d.getDay()]}${dayOffset===0?' · 今天':''}</div></div><div class="day-nav"><button onclick="navDay(-1)">◀</button><button onclick="navDay(0)" title="回到今天">●</button><button onclick="navDay(1)">▶</button></div></div>`;
-
-  // Quick Add Bar
-  h += `<div class="day-add-bar fade-in">`;
-  h += `<span class="add-label">➕ 快速添加</span>`;
-  h += `<select class="day-add-select" id="dayAddModule">`;
-  MODULES.forEach(mod => {
-    h += `<option value="${mod.id}">${mod.emoji} ${mod.name}</option>`;
-  });
-  h += `</select>`;
-  h += `<input class="day-add-input" id="dayAddInput" placeholder="输入待办内容，回车添加…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTodoInDay();}"/>`;
-  h += `<button class="day-add-submit" onclick="addTodoInDay()">添加</button>`;
-  h += `</div>`;
+  h += `<div class="day-header fade-in"><div><div class="day-date">${d.getMonth()+1}月${d.getDate()}日</div><div class="day-sub">星期${wd[d.getDay()]}${dayOffset===0?' · 今天':''}</div></div><div class="day-nav"><button onclick="navDay(-1)">◀</button><button class="day-today-btn" onclick="navDay(0)" title="回到今天">今天</button><button onclick="navDay(1)">▶</button></div></div>`;
 
   // Collect all todos for this day grouped by module
   let found = false;
@@ -1613,8 +2862,19 @@ function renderDay() {
   if(doneTodos.length) h += `<span class="badge done-b">${doneTodos.length} 完成</span>`;
   h += `</div>`;
 
+  // Quick Add Bar (inside todo section)
+  h += `<div class="day-add-bar">`;
+  h += `<select class="day-add-select" id="dayAddModule">`;
+  MODULES.forEach(mod => {
+    h += `<option value="${mod.id}">${mod.emoji} ${mod.name}</option>`;
+  });
+  h += `</select>`;
+  h += `<input class="day-add-input" id="dayAddInput" placeholder="输入待办内容，回车添加…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTodoInDay();}"/>`;
+  h += `<button class="day-add-submit" onclick="addTodoInDay()">添加</button>`;
+  h += `</div>`;
+
   if(!found) {
-    h += `<div style="text-align:center;padding:24px 0;color:var(--text-tri);font-size:13px">暂无待办，在上方快速添加栏中新增</div>`;
+    h += `<div style="text-align:center;padding:24px 0;color:var(--text-tri);font-size:13px">暂无待办，在上方输入框中快速新增</div>`;
   } else if(unassignedNotDone.length === 0 && doneTodos.length === 0) {
     h += `<div style="text-align:center;padding:16px 0;color:var(--text-tri);font-size:13px">✅ 全部已安排到时间段<br><span style="font-size:11px">从下方时间段拖回此处可取消安排</span></div>`;
   } else {
@@ -1922,6 +3182,25 @@ function disableSlotEdit(el, todoId) {
   const item = el.closest('.ts-item');
   if(item) item.draggable = true;
 }
+
+// --- Enter key = confirm for all todo contenteditable fields ---
+document.addEventListener('keydown', function(e) {
+  if(e.key !== 'Enter') return;
+  const el = e.target;
+  // Only intercept on todo text fields (row-text / ts-item-text), not on textareas (info notes)
+  if(el.matches('.row-text, .ts-item-text')) {
+    e.preventDefault();
+    el.blur(); // triggers onblur → save
+  }
+});
+
+// --- Textarea auto-resize on delete/backspace (keyup supplement to oninput) ---
+document.addEventListener('keyup', function(e) {
+  const el = e.target;
+  if(el.matches('.info-note-area, .i-text-area')) {
+    autoResizeTextarea(el);
+  }
+});
 
 // Switch a todo's module via a dropdown menu near the clicked tag
 function switchTodoModule(todoId, tagEl, event) {
@@ -2271,11 +3550,11 @@ document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeDatePi
 // ================================================================
 
 function loadTimeSlots() {
-  try { return JSON.parse(localStorage.getItem(SLOT_KEY) || '{}'); } catch(e) { return {}; }
+  try { return JSON.parse(localStorage.getItem(getSlotKey()) || '{}'); } catch(e) { return {}; }
 }
 
 function saveTimeSlots(data) {
-  localStorage.setItem(SLOT_KEY, JSON.stringify(data));
+  localStorage.setItem(getSlotKey(), JSON.stringify(data));
   // Schedule cloud sync (will include timeSlots)
   scheduleCloudSync();
 }
@@ -2557,14 +3836,34 @@ function autoDetectAllDates() {
   return autoFixed;
 }
 
-// Render empty state first (shows loading skeleton)
+// Render empty state first
 document.getElementById('weekLabel').textContent = getWeekLabel();
 renderWeek();
 
-// Then load from cloud — this is the ONLY data source on page load
-(async function initCloudSync() {
-  const loaded = await loadFromCloud();
-  if(loaded) {
+// ================================================================
+// BOOT — Auth-aware initialization
+// ================================================================
+async function bootAppData() {
+  // Reset state for clean boot
+  MODULES = JSON.parse(JSON.stringify(DEFAULT_MODULES));
+  _versions = [];
+  _cloudReady = false;
+  _userHasEdited = false;
+  _localUpdatedAt = null;
+
+  // Always start at current week's week-view (regardless of previous user's state)
+  currentView = 'week';
+  weekOffset = 0;
+  dayOffset = 0;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === 'week'));
+  document.getElementById('weekView').classList.add('active');
+  document.getElementById('dayView').classList.remove('active');
+  document.getElementById('weekNavBar').style.display = 'flex';
+  document.getElementById('weekLabel').textContent = getWeekLabel();
+
+  const result = await pullFromCloud({ silent: false, isInit: true });
+  if(result.ok && result.updated) {
+    // Got cloud data — use it
     restoreUidCounter();
     normalizeInfoWeeks();
     deduplicateTodos();
@@ -2572,68 +3871,127 @@ renderWeek();
     if(autoFixed > 0) {
       setTimeout(() => toast(`🔍 自动识别了 ${autoFixed} 条待办的日期`), 500);
     }
-    // Cache cloud data to localStorage for future offline use
-    localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: _localUpdatedAt }));
     document.getElementById('weekLabel').textContent = getWeekLabel();
-    if(currentView === 'week') renderWeek();
-    else renderDay();
+    if(currentView === 'week') renderWeek(); else renderDay();
     _cloudReady = true;
     showSyncStatus('saved');
-    console.log('✅ Cloud data loaded and synced');
+    console.log('✅ Cloud data loaded. updated_at=' + _localUpdatedAt);
+  } else if(result.ok && !result.updated) {
+    // Cloud exists but local is same or newer — load from localStorage
+    if(loadState()) {
+      normalizeInfoWeeks(); deduplicateTodos(); autoDetectAllDates();
+      if(currentView === 'week') renderWeek(); else renderDay();
+    }
+    _cloudReady = true;
+    showSyncStatus('saved');
   } else {
-    // Cloud not available — try localStorage as fallback (offline mode)
-    loadState();
-    if(MODULES.some(m => m.todos.length > 0 || m.infos.length > 0)) {
-      normalizeInfoWeeks();
-      deduplicateTodos();
-      autoDetectAllDates();
-      if(currentView === 'week') renderWeek();
-      else renderDay();
+    // Cloud not available — fallback to localStorage (offline mode)
+    if(loadState()) {
+      normalizeInfoWeeks(); deduplicateTodos(); autoDetectAllDates();
+      if(currentView === 'week') renderWeek(); else renderDay();
       console.log('📴 Using localStorage fallback (offline mode)');
     }
     _cloudReady = true;
+    _pendingSync = _userHasEdited;
     showSyncStatus('offline');
-    console.log('⚠️ Cloud load returned false, using offline data if any');
+    console.log('⚠️ Cloud load failed, using offline data');
+  }
+  // Load version history in background
+  loadVersions().then(() => console.log(`📸 ${_versions.length} version(s) loaded`));
+}
+
+// --- Check saved session on page load ---
+(function authBoot() {
+  const session = getSavedSession();
+  if(session) {
+    // Already logged in — hide auth overlay and boot
+    _currentUser = { username: session.username, display_name: session.display_name || session.username };
+    applyUserContext();
+    hideAuthOverlay();
+    bootAppData();
+  } else {
+    // Not logged in — show auth overlay, hide main content
+    showAuthOverlay();
   }
 })();
 
-// Protect against data loss on page close/navigate — force sync immediately
-let _userHasEdited = false; // Only sync on close if user actually made changes
+// ================================================================
+// MULTI-WINDOW SYNC — pull cloud data when tab becomes visible
+// ================================================================
+document.addEventListener('visibilitychange', async () => {
+  if(document.visibilityState === 'visible') {
+    // Tab came back to focus — check cloud for newer data from other windows
+    if(!_cloudAvailable || !_supabaseClient || !_cloudReady) return;
+    const result = await pullFromCloud({ silent: true });
+    if(result.ok && result.updated) {
+      // Cloud has newer data — refresh the page
+      restoreUidCounter();
+      normalizeInfoWeeks();
+      deduplicateTodos();
+      autoDetectAllDates();
+      document.getElementById('weekLabel').textContent = getWeekLabel();
+      if(currentView === 'week') renderWeek(); else renderDay();
+      showSyncStatus('conflict');
+      // Show a subtle toast so user knows data was refreshed
+      toast('📥 检测到其他窗口的更新，已自动同步');
+      console.log('🔄 Pulled newer data from cloud on tab focus');
+    } else if(_pendingSync && _userHasEdited) {
+      // We have pending local changes — push them now that we're back online
+      await pushToCloud();
+    }
+  } else {
+    // Tab going hidden — push any pending changes
+    if(_cloudAvailable && _userHasEdited && _cloudReady) {
+      pushToCloud(); // fire-and-forget
+    }
+  }
+});
 
+// ================================================================
+// OFFLINE RECOVERY — push pending changes when network comes back
+// ================================================================
+window.addEventListener('online', async () => {
+  console.log('🌐 Network restored');
+  if(_pendingSync && _userHasEdited && _cloudReady) {
+    toast('🌐 网络恢复，正在同步…');
+    await pushToCloud();
+    if(!_pendingSync) {
+      toast('✅ 离线数据已同步到云端');
+    }
+  }
+});
+
+window.addEventListener('offline', () => {
+  console.log('📴 Network lost');
+  showSyncStatus('offline');
+});
+
+// ================================================================
+// PAGE CLOSE — last-chance sync via keepalive fetch
+// ================================================================
 window.addEventListener('beforeunload', () => {
-  if(!_cloudAvailable || !_supabaseClient || !_userHasEdited) return;
-  // Use sendBeacon for reliable delivery even during page close
+  if(!_cloudAvailable || !_userHasEdited) return;
+  // Use fetch with keepalive for reliable delivery during page close
   const payload = JSON.stringify({
-    id: DATA_ROW_ID,
+    id: getDataRowId(),
     modules: MODULES,
-    time_slots: JSON.parse(localStorage.getItem(SLOT_KEY) || '{}'),
+    time_slots: JSON.parse(localStorage.getItem(getSlotKey()) || '{}'),
     updated_at: new Date().toISOString()
   });
-  // sendBeacon with Supabase REST API
   const url = SUPABASE_URL + '/rest/v1/schedule_data?on_conflict=id';
-  const headers = {
-    'apikey': SUPABASE_ANON_KEY,
-    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-    'Content-Type': 'application/json',
-    'Prefer': 'resolution=merge-duplicates'
-  };
   try {
-    const blob = new Blob([payload], { type: 'application/json' });
-    // navigator.sendBeacon doesn't support custom headers, use fetch keepalive instead
     fetch(url, {
       method: 'POST',
-      headers: headers,
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      },
       body: payload,
       keepalive: true
     }).catch(() => {});
   } catch(e) {}
-});
-
-// Also sync when tab becomes hidden (user switches tabs)
-document.addEventListener('visibilitychange', () => {
-  if(document.visibilityState === 'hidden' && _cloudAvailable && _userHasEdited) {
-    syncToCloud();
-  }
 });
 </script>
 </body>
