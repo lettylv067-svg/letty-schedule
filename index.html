@@ -1150,21 +1150,13 @@ async function loadFromCloud() {
       }
       throw error;
     }
-    if(data) {
-      // Compare timestamps: only overwrite local if cloud is newer (or local has no timestamp)
-      const cloudTime = data.updated_at ? new Date(data.updated_at).getTime() : 0;
-      const localTime = _localUpdatedAt ? new Date(_localUpdatedAt).getTime() : 0;
-      if(localTime > 0 && cloudTime > 0 && localTime > cloudTime) {
-        console.log('Local data is strictly newer, keeping local. Local:', _localUpdatedAt, 'Cloud:', data.updated_at);
-        return false;
-      }
-      console.log('Cloud data will be used. Local:', _localUpdatedAt || '(none)', 'Cloud:', data.updated_at);
-      if(data.modules) {
-        MODULES = data.modules;
-        _localUpdatedAt = data.updated_at;
-        // Also update localStorage cache
-        localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: data.updated_at }));
-      }
+    if(data && data.modules) {
+      // Cloud is single source of truth on page load — always use cloud data
+      console.log('☁️ Cloud data loaded. Cloud updated_at:', data.updated_at);
+      MODULES = data.modules;
+      _localUpdatedAt = data.updated_at;
+      // Update localStorage cache
+      localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: data.updated_at }));
       if(data.time_slots) {
         localStorage.setItem(SLOT_KEY, JSON.stringify(data.time_slots));
       }
@@ -2658,9 +2650,11 @@ renderWeek();
     console.log('✅ Cloud data loaded and synced');
   } else {
     _cloudReady = true;
-    // Local is newer or first time — push local data to cloud
-    await syncToCloud();
-    console.log('☁️ Local data pushed to cloud');
+    // Cloud load returned false — could be network issue or first time
+    // Do NOT push local data to cloud here (might overwrite good cloud data)
+    // Only push if there's truly no cloud row (handled by syncToCloud on user edits)
+    showSyncStatus('offline');
+    console.log('⚠️ Cloud load returned false, NOT pushing local data to cloud');
   }
 })();
 
