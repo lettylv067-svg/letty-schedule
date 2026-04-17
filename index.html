@@ -1151,10 +1151,19 @@ async function loadFromCloud() {
       throw error;
     }
     if(data) {
+      // Compare timestamps: only overwrite local if cloud is newer
+      const cloudTime = data.updated_at ? new Date(data.updated_at).getTime() : 0;
+      const localTime = _localUpdatedAt ? new Date(_localUpdatedAt).getTime() : 0;
+      if(localTime > 0 && localTime >= cloudTime) {
+        console.log('Local data is newer or same, keeping local. Local:', _localUpdatedAt, 'Cloud:', data.updated_at);
+        return false;
+      }
+      console.log('Cloud data is newer, updating local. Local:', _localUpdatedAt, 'Cloud:', data.updated_at);
       if(data.modules) {
         MODULES = data.modules;
+        _localUpdatedAt = data.updated_at;
         // Also update localStorage cache
-        localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES }));
+        localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: data.updated_at }));
       }
       if(data.time_slots) {
         localStorage.setItem(SLOT_KEY, JSON.stringify(data.time_slots));
@@ -1176,6 +1185,8 @@ let currentView = 'week';
 const STORE_KEY = 'letty_schedule_v3';
 const SLOT_KEY = 'letty_time_slots';
 
+let _localUpdatedAt = null; // Track local data freshness
+
 function loadState() {
   // Load from localStorage first (fast, offline-capable)
   const raw = localStorage.getItem(STORE_KEY);
@@ -1183,6 +1194,7 @@ function loadState() {
   try {
     const saved = JSON.parse(raw);
     if (saved.modules) MODULES = saved.modules;
+    if (saved.updated_at) _localUpdatedAt = saved.updated_at;
   } catch(e) {}
   // Restore _uid counter to avoid ID collisions with existing data
   restoreUidCounter();
@@ -1204,8 +1216,10 @@ function restoreUidCounter() {
 }
 
 function saveState() {
-  // Always save to localStorage (instant, offline)
-  localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES }));
+  // Always save to localStorage with timestamp (instant, offline)
+  const now = new Date().toISOString();
+  localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: now }));
+  _localUpdatedAt = now;
   // Schedule async cloud sync
   scheduleCloudSync();
 }
@@ -2611,7 +2625,7 @@ function autoDetectAllDates() {
   return autoFixed;
 }
 
-// Initial render with local data (fast)
+// Initial render with local data (fast) — DO NOT trigger cloud sync yet
 normalizeInfoWeeks();
 deduplicateTodos();
 let autoFixed = autoDetectAllDates();
@@ -2619,7 +2633,10 @@ if(autoFixed > 0) {
   setTimeout(() => toast(`🔍 自动识别了 ${autoFixed} 条待办的日期`), 500);
 }
 
-saveState();
+// Save normalized data to localStorage only (no cloud sync until cloud data is loaded)
+const _initNow = new Date().toISOString();
+localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: _localUpdatedAt || _initNow }));
+
 document.getElementById('weekLabel').textContent = getWeekLabel();
 renderWeek();
 
@@ -2631,8 +2648,8 @@ renderWeek();
     normalizeInfoWeeks();
     deduplicateTodos();
     autoDetectAllDates();
-    // Save normalized data back to localStorage
-    localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES }));
+    // Save normalized cloud data back to localStorage
+    localStorage.setItem(STORE_KEY, JSON.stringify({ modules: MODULES, updated_at: _localUpdatedAt }));
     document.getElementById('weekLabel').textContent = getWeekLabel();
     if(currentView === 'week') renderWeek();
     else renderDay();
@@ -2641,11 +2658,48 @@ renderWeek();
     console.log('✅ Cloud data loaded and synced');
   } else {
     _cloudReady = true;
-    // First time — push local data to cloud
+    // Local is newer or first time — push local data to cloud
     await syncToCloud();
     console.log('☁️ Local data pushed to cloud');
   }
 })();
+
+// Protect against data loss on page close/navigate — force sync immediately
+window.addEventListener('beforeunload', () => {
+  if(!_cloudAvailable || !_supabaseClient) return;
+  // Use sendBeacon for reliable delivery even during page close
+  const payload = JSON.stringify({
+    id: DATA_ROW_ID,
+    modules: MODULES,
+    time_slots: JSON.parse(localStorage.getItem(SLOT_KEY) || '{}'),
+    updated_at: new Date().toISOString()
+  });
+  // sendBeacon with Supabase REST API
+  const url = SUPABASE_URL + '/rest/v1/schedule_data?on_conflict=id';
+  const headers = {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': 'resolution=merge-duplicates'
+  };
+  try {
+    const blob = new Blob([payload], { type: 'application/json' });
+    // navigator.sendBeacon doesn't support custom headers, use fetch keepalive instead
+    fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: payload,
+      keepalive: true
+    }).catch(() => {});
+  } catch(e) {}
+});
+
+// Also sync when tab becomes hidden (user switches tabs)
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden' && _cloudAvailable) {
+    syncToCloud();
+  }
+});
 </script>
 </body>
 </html>
