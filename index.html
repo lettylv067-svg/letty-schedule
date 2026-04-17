@@ -28,8 +28,6 @@
     --hl-bg: rgba(255,204,0,0.18);
     --today-glow: rgba(0,122,255,0.06);
     --today-border: #007aff;
-    --week-hl: rgba(88,86,214,0.05);
-    --week-border: #5856d6;
     --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
     --shadow: 0 2px 8px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
     --shadow-lg: 0 8px 32px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
@@ -182,11 +180,11 @@
     border-left: 3px solid var(--today-border);
   }
   .row.todo.today-hl:hover { background: rgba(0,122,255,0.08); }
-  .row.todo.this-week-hl {
-    background: var(--week-hl);
-    border-left: 3px solid var(--week-border);
+  .row.todo.overdue-hl {
+    background: rgba(255,59,48,0.06);
+    border-left: 3px solid #ff3b30;
   }
-  .row.todo.this-week-hl:hover { background: rgba(88,86,214,0.08); }
+  .row.todo.overdue-hl:hover { background: rgba(255,59,48,0.10); }
 
   .row-cb { margin-top: 2px; flex-shrink: 0; }
   .row-cb input[type="checkbox"] {
@@ -269,13 +267,29 @@
   .row:hover .act-btn.date-btn { opacity: 1; }
 
   .more-info-btn {
-    display:flex; align-items:center; justify-content:center; gap:8px;
-    padding: 12px 20px; margin: 6px 16px 16px;
-    background: var(--info-bg); border: 1px dashed rgba(175,82,222,0.3);
-    border-radius: var(--rs); cursor:pointer; transition:all .2s var(--trans-smooth);
-    font-size: 12px; font-weight: 600; color: var(--info-c);
+    display:flex; align-items:center; justify-content:center; gap:4px;
+    padding: 8px 20px; margin: 4px 16px 12px;
+    cursor:pointer; transition:all .2s var(--trans-smooth);
+    font-size: 11px; font-weight: 500; color: var(--text-tri);
+    border: none; background: none;
   }
-  .more-info-btn:hover { background: rgba(175,82,222,0.12); border-style: solid; }
+  .more-info-btn:hover { color: var(--text-sec); }
+
+  .prev-info-block { margin: 2px 16px 8px; }
+  .prev-info-header {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 6px 4px; font-size: 11px; color: var(--text-tri);
+    user-select: none;
+  }
+  .prev-info-header:hover { color: var(--text-sec); }
+  .prev-info-arrow { font-size: 9px; }
+  .prev-info-label { font-weight: 500; }
+
+  .info-week-label {
+    font-size: 10px; color: var(--text-tri); font-weight: 600;
+    padding: 6px 20px 2px; letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
 
   /* ========== ADD MODULE CARD ========== */
   .add-module-card {
@@ -470,6 +484,73 @@
   .day-nav button:hover { background: var(--primary-soft); border-color: var(--primary); }
   .day-nav button:active { transform: scale(0.92); }
   .day-nav .day-today-btn { width: auto; padding: 0 14px; font-size: 13px; }
+  .day-nav .day-cal-btn { font-size: 16px; background: none; border: none; cursor: pointer; width: 36px; height: 36px; display:flex; align-items:center; justify-content:center; border-radius: var(--rs); transition: background .2s; }
+  .day-nav .day-cal-btn:hover { background: var(--primary-soft); }
+
+  /* Week header card — compact nav inside week view */
+  .week-header-card {
+    background: var(--card-solid);
+    border-radius: var(--r-lg); border: 0.5px solid var(--border);
+    padding: 14px 20px; margin-bottom: 16px; box-shadow: var(--shadow-sm);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .wh-date {
+    font-size: 20px; font-weight: 800; letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .wh-sub { font-size: 12px; color: var(--text-sec); margin-top: 1px; font-weight: 500; }
+  .wh-right { display: flex; gap: 6px; align-items: center; }
+  .wh-nav-btn {
+    width: 32px; height: 32px; border: 1px solid var(--border-strong); background: #fff;
+    border-radius: var(--rs); cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s var(--trans-smooth); color: var(--primary); font-weight: 600;
+  }
+  .wh-nav-btn:hover { background: var(--primary-soft); border-color: var(--primary); }
+  .wh-nav-btn:active { transform: scale(0.92); }
+  .wh-today-btn {
+    padding: 0 12px; height: 32px; border: 1px solid var(--border-strong); background: #fff;
+    border-radius: var(--rs); cursor: pointer; font-size: 12px; font-weight: 600;
+    color: var(--primary); transition: all .2s var(--trans-smooth);
+  }
+  .wh-today-btn:hover { background: var(--primary-soft); border-color: var(--primary); }
+  .wh-cal-btn {
+    width: 32px; height: 32px; border: 1px solid var(--border-strong); background: #fff;
+    border-radius: var(--rs); cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s var(--trans-smooth);
+  }
+  .wh-cal-btn:hover { background: var(--primary-soft); border-color: var(--primary); }
+
+  /* Mini calendar popover */
+  .mini-cal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 999; }
+  .mini-cal {
+    position: fixed; z-index: 1000;
+    background: var(--card-solid); border: 0.5px solid var(--border);
+    border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+    padding: 12px; width: 260px;
+  }
+  .mini-cal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px; padding: 0 4px;
+  }
+  .mini-cal-title { font-size: 14px; font-weight: 700; color: var(--text); }
+  .mini-cal-nav { background: none; border: none; cursor: pointer; font-size: 14px; color: var(--primary); padding: 4px 8px; border-radius: 6px; }
+  .mini-cal-nav:hover { background: var(--primary-soft); }
+  .mini-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+  .mini-cal-dow { font-size: 10px; color: var(--text-tri); font-weight: 600; padding: 4px 0; }
+  .mini-cal-day {
+    font-size: 12px; padding: 6px 0; border-radius: 6px; cursor: pointer;
+    transition: background .15s; color: var(--text); font-weight: 500;
+  }
+  .mini-cal-day:hover { background: var(--primary-soft); }
+  .mini-cal-day.today { background: var(--primary); color: #fff; font-weight: 700; }
+  .mini-cal-day.today:hover { background: #0066d6; }
+  .mini-cal-day.selected { background: rgba(0,122,255,0.12); color: var(--primary); font-weight: 700; }
+  .mini-cal-day.other-month { color: var(--text-tri); }
+  .mini-cal-day.empty { cursor: default; }
 
   .day-section {
     background: var(--card-solid);
@@ -1072,12 +1153,7 @@
     </div>
   </div>
   <div class="header-right">
-    <div class="week-nav" id="weekNavBar">
-      <button class="week-nav-btn" onclick="navWeek(-1)" title="上一周">◀</button>
-      <span class="week-label" id="weekLabel"></span>
-      <button class="week-nav-btn" onclick="navWeek(1)" title="下一周">▶</button>
-      <button class="week-today-btn" onclick="navWeek(0)" title="回到本周">本周</button>
-    </div>
+    <span id="weekLabel" style="display:none;"></span>
     <div class="data-mgmt">
       <button class="data-btn" onclick="openVersionPanel()" title="查看历史版本"><span class="btn-icon">🕐</span> 版本</button>
       <button class="data-btn" onclick="exportData()" title="导出所有数据为 JSON 备份"><span class="btn-icon">📥</span> 导出</button>
@@ -2650,14 +2726,178 @@ function navWeek(dir) {
 }
 
 // ================================================================
+// MINI CALENDAR — for quick week/day jump
+// ================================================================
+let _miniCalMode = 'week'; // 'week' or 'day'
+let _miniCalMonth = null;   // Date object for displayed month
+
+function openWeekCalendar(e) {
+  e.stopPropagation();
+  _miniCalMode = 'week';
+  const mon = getCurrentWeekMonday();
+  _miniCalMonth = new Date(mon.getFullYear(), mon.getMonth(), 1);
+  showMiniCal(e);
+}
+
+function openDayCalendar(e) {
+  e.stopPropagation();
+  _miniCalMode = 'day';
+  const d = new Date(NOW);
+  d.setDate(d.getDate() + dayOffset);
+  _miniCalMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+  showMiniCal(e);
+}
+
+function showMiniCal(e) {
+  closeMiniCal();
+  const rect = e.currentTarget.getBoundingClientRect();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'mini-cal-overlay';
+  overlay.onclick = closeMiniCal;
+
+  const cal = document.createElement('div');
+  cal.className = 'mini-cal';
+  cal.id = 'miniCalPopover';
+
+  // Position below the button
+  let top = rect.bottom + 6;
+  let left = rect.left - 100;
+  if(left < 10) left = 10;
+  if(left + 270 > window.innerWidth) left = window.innerWidth - 275;
+  if(top + 300 > window.innerHeight) top = rect.top - 306;
+
+  cal.style.top = top + 'px';
+  cal.style.left = left + 'px';
+
+  overlay.appendChild(cal);
+  document.body.appendChild(overlay);
+  renderMiniCal();
+}
+
+function closeMiniCal() {
+  const el = document.querySelector('.mini-cal-overlay');
+  if(el) el.remove();
+}
+
+function renderMiniCal() {
+  const cal = document.getElementById('miniCalPopover');
+  if(!cal) return;
+
+  const year = _miniCalMonth.getFullYear();
+  const month = _miniCalMonth.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDow = new Date(year, month, 1).getDay(); // 0=Sun
+  // Adjust to Mon-start: Mon=0, Sun=6
+  const startOffset = firstDow === 0 ? 6 : firstDow - 1;
+
+  const today = new Date(NOW);
+  const todayStr = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+
+  // Current selection for highlighting
+  let selectedDates = [];
+  if(_miniCalMode === 'week') {
+    const mon = getCurrentWeekMonday();
+    for(let i = 0; i < 7; i++) {
+      const d = new Date(mon); d.setDate(mon.getDate() + i);
+      selectedDates.push(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    }
+  } else {
+    const d = new Date(NOW); d.setDate(d.getDate() + dayOffset);
+    selectedDates.push(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+  }
+
+  const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const dowNames = ['一','二','三','四','五','六','日'];
+
+  let h = `<div class="mini-cal-header">`;
+  h += `<button class="mini-cal-nav" onclick="event.stopPropagation();miniCalNav(-1)">◀</button>`;
+  h += `<span class="mini-cal-title">${year}年${monthNames[month]}</span>`;
+  h += `<button class="mini-cal-nav" onclick="event.stopPropagation();miniCalNav(1)">▶</button>`;
+  h += `</div>`;
+
+  h += `<div class="mini-cal-grid">`;
+  dowNames.forEach(d => { h += `<div class="mini-cal-dow">${d}</div>`; });
+
+  // Empty cells before first day
+  for(let i = 0; i < startOffset; i++) {
+    h += `<div class="mini-cal-day empty"></div>`;
+  }
+
+  for(let day = 1; day <= daysInMonth; day++) {
+    const key = `${year}-${month}-${day}`;
+    const cls = ['mini-cal-day'];
+    if(key === todayStr) cls.push('today');
+    if(selectedDates.includes(key)) cls.push('selected');
+    h += `<div class="${cls.join(' ')}" onclick="event.stopPropagation();miniCalSelect(${year},${month},${day})">${day}</div>`;
+  }
+  h += `</div>`;
+
+  cal.innerHTML = h;
+}
+
+function miniCalNav(dir) {
+  _miniCalMonth.setMonth(_miniCalMonth.getMonth() + dir);
+  renderMiniCal();
+}
+
+function miniCalSelect(year, month, day) {
+  const selected = new Date(year, month, day);
+
+  if(_miniCalMode === 'week') {
+    // Jump to the week containing this date
+    const selectedMon = getMonday(selected);
+    const thisMon = getMonday(NOW);
+    const diffWeeks = Math.round((selectedMon - thisMon) / (7 * 24 * 60 * 60 * 1000));
+    weekOffset = diffWeeks;
+    document.getElementById('weekLabel').textContent = getWeekLabel();
+    renderWeek();
+  } else {
+    // Jump to this day
+    const today = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate());
+    const target = new Date(year, month, day);
+    const diffDays = Math.round((target - today) / (24 * 60 * 60 * 1000));
+    dayOffset = diffDays;
+    renderDay();
+  }
+  closeMiniCal();
+}
+
+// ================================================================
 // RENDER — WEEK
 // ================================================================
 function renderWeek() {
   const c = document.getElementById('weekView');
   const todayStr = getTodayStr();
   const weekDates = getCurrentWeekDates();
+  const mon = getCurrentWeekMonday();
+  const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+  const wd = ['日','一','二','三','四','五','六'];
 
-  let h = '<div class="module-grid fade-in">';
+  let h = '';
+
+  // Week navigation card (compact, matching day-header style)
+  let weekDesc = '';
+  if(weekOffset === 0) weekDesc = '本周';
+  else if(weekOffset === -1) weekDesc = '上周';
+  else if(weekOffset === 1) weekDesc = '下周';
+  else weekDesc = `${mon.getFullYear()}/${fmtDate(mon)} ~ ${fmtDate(sun)}`;
+
+  const dateRange = `${mon.getMonth()+1}月${mon.getDate()}日 — ${sun.getMonth()+1}月${sun.getDate()}日`;
+
+  h += `<div class="week-header-card fade-in">`;
+  h += `<div class="wh-left">`;
+  h += `<div class="wh-date">${dateRange}</div>`;
+  h += `<div class="wh-sub">${weekDesc}</div>`;
+  h += `</div>`;
+  h += `<div class="wh-right">`;
+  h += `<button class="wh-nav-btn" onclick="navWeek(-1)" title="上一周">◀</button>`;
+  h += `<button class="wh-today-btn" onclick="navWeek(0)" title="回到本周">本周</button>`;
+  h += `<button class="wh-nav-btn" onclick="navWeek(1)" title="下一周">▶</button>`;
+  h += `<button class="wh-cal-btn" onclick="openWeekCalendar(event)" title="选择周">📅</button>`;
+  h += `</div></div>`;
+
+  h += '<div class="module-grid fade-in">';
 
   MODULES.forEach(mod => {
     const allTodos = mod.todos;
@@ -2707,16 +2947,63 @@ function renderWeek() {
       done.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'week'); });
     }
 
-    // INFOS
-    if(weekInfos.length) {
-      h += `<div class="sec-label"><span>💬 信息备注</span><button class="sec-add-btn" onclick="event.stopPropagation();addInfo('${mod.id}')">+ 新增</button></div>`;
-      weekInfos.forEach(i => { h += infoRowHTML(i); });
-    } else {
-      h += `<div class="sec-label"><span>💬 信息备注</span><button class="sec-add-btn" onclick="event.stopPropagation();addInfo('${mod.id}')">+ 新增</button></div>`;
-    }
+    // INFOS — latest 3 grouped by week, collapsible, with "more" if > 3
+    h += `<div class="sec-label"><span>💬 信息备注</span><button class="sec-add-btn" onclick="event.stopPropagation();addInfo('${mod.id}')">+ 新增</button></div>`;
 
-    if(otherInfos.length > 0) {
-      h += `<div class="more-info-btn" onclick="openInfoDetail('${mod.id}')">📂 查看全部信息备注（共 ${totalInfos} 条） →</div>`;
+    if(totalInfos > 0) {
+      // Sort all infos by week desc, then by array order desc (newest first)
+      const allSorted = [...mod.infos].sort((a, b) => {
+        const wa = a.week || '0000-00-00', wb = b.week || '0000-00-00';
+        if(wa !== wb) return wb.localeCompare(wa);
+        return mod.infos.indexOf(b) - mod.infos.indexOf(a);
+      });
+      const show3 = allSorted.slice(0, 3);
+
+      // Group the 3 items by week, preserving order
+      const curMonStr = fmtDate(getCurrentWeekMonday());
+      const prevMon = new Date(getCurrentWeekMonday());
+      prevMon.setDate(prevMon.getDate() - 7);
+      const prevMonStr = fmtDate(prevMon);
+
+      const groups = [];
+      let lastWeek = null;
+      show3.forEach(info => {
+        const w = info.week || '';
+        if(w !== lastWeek) {
+          // Determine label
+          let label;
+          if(w === curMonStr) {
+            label = '当周';
+          } else if(w === prevMonStr) {
+            label = '上周';
+          } else if(w) {
+            const wMon = dateToObj(w);
+            const wSun = new Date(wMon); wSun.setDate(wMon.getDate() + 6);
+            label = fmtDate(wMon) + ' ~ ' + fmtDate(wSun);
+          } else {
+            label = '未分类';
+          }
+          groups.push({ label, infos: [info] });
+          lastWeek = w;
+        } else {
+          groups[groups.length - 1].infos.push(info);
+        }
+      });
+
+      h += `<div class="prev-info-block">`;
+      h += `<div class="prev-info-header" onclick="togglePrevInfos('${mod.id}')">`;
+      h += `<span class="prev-info-arrow" id="prevArrow-${mod.id}">▼</span>`;
+      h += `<span class="prev-info-label">最近备注（共 ${totalInfos} 条）</span>`;
+      h += `</div>`;
+      h += `<div class="prev-info-body" id="prevBody-${mod.id}">`;
+      groups.forEach(g => {
+        h += `<div class="info-week-label">${g.label}</div>`;
+        g.infos.forEach(i => { h += infoRowHTML(i); });
+      });
+      if(totalInfos > 3) {
+        h += `<div class="more-info-btn" onclick="openInfoDetail('${mod.id}')">查看全部备注 →</div>`;
+      }
+      h += `</div></div>`;
     }
 
     h += `</div></div>`;
@@ -2745,7 +3032,6 @@ function todoRowHTML(t, weekDates, todayStr, context, hiddenSlotIds, slotLabel) 
   }
 
   const isToday = t.date && t.date === todayStr;
-  const isThisWeek = t.date && weekDates && weekDates.includes(t.date) && !isToday;
   const cls = ['row','todo'];
   if(isDone) cls.push('completed');
 
@@ -2753,10 +3039,10 @@ function todoRowHTML(t, weekDates, todayStr, context, hiddenSlotIds, slotLabel) 
   const diffCls = getDiffClass(t.id, 'todo');
   if(diffCls) cls.push(diffCls.trim());
 
-  // Only highlight in week view
-  if(context === 'week') {
-    if(isToday && !isDone) cls.push('today-hl');
-    else if(isThisWeek && !isDone) cls.push('this-week-hl');
+  // Only highlight in week view: today = blue, overdue = red
+  if(context === 'week' && !isDone) {
+    if(isToday) cls.push('today-hl');
+    else if(t.date && t.date < todayStr) cls.push('overdue-hl');
   }
 
   // In day view, make items draggable (both assigned and unassigned)
@@ -2833,7 +3119,7 @@ function renderDay() {
   let h = '';
 
   // Day Header
-  h += `<div class="day-header fade-in"><div><div class="day-date">${d.getMonth()+1}月${d.getDate()}日</div><div class="day-sub">星期${wd[d.getDay()]}${dayOffset===0?' · 今天':''}</div></div><div class="day-nav"><button onclick="navDay(-1)">◀</button><button class="day-today-btn" onclick="navDay(0)" title="回到今天">今天</button><button onclick="navDay(1)">▶</button></div></div>`;
+  h += `<div class="day-header fade-in"><div><div class="day-date">${d.getMonth()+1}月${d.getDate()}日</div><div class="day-sub">星期${wd[d.getDay()]}${dayOffset===0?' · 今天':''}</div></div><div class="day-nav"><button onclick="navDay(-1)">◀</button><button class="day-today-btn" onclick="navDay(0)" title="回到今天">今天</button><button onclick="navDay(1)">▶</button><button class="day-cal-btn" onclick="openDayCalendar(event)" title="选择日期">📅</button></div></div>`;
 
   // Collect all todos for this day grouped by module
   let found = false;
@@ -3009,6 +3295,42 @@ function addTodoInDayForModule(modId) {
 // ================================================================
 // INFO DETAIL PAGE
 // ================================================================
+// Get the most recent week's infos for a module (when current week has none)
+// Toggle previous-week info block
+function togglePrevInfos(modId) {
+  const body = document.getElementById('prevBody-' + modId);
+  const arrow = document.getElementById('prevArrow-' + modId);
+  if(!body) return;
+  const isHidden = body.style.display === 'none';
+  body.style.display = isHidden ? '' : 'none';
+  if(arrow) arrow.textContent = isHidden ? '▼' : '▶';
+}
+
+// Returns { infos: [...], label: '上周' / '04/07 ~ 04/13' }
+function getRecentInfosForModule(mod, currentWeekDates) {
+  const curMon = getCurrentWeekMonday();
+  // Search backwards up to 8 weeks
+  for(let w = 1; w <= 8; w++) {
+    const mon = new Date(curMon);
+    mon.setDate(curMon.getDate() - 7 * w);
+    const dates = [];
+    for(let i = 0; i < 7; i++) { const d = new Date(mon); d.setDate(mon.getDate() + i); dates.push(fmtDate(d)); }
+    const infos = mod.infos.filter(i => infoInWeek(i, dates));
+    if(infos.length > 0) {
+      // Build label: w===1 → "上周", otherwise "MM/DD ~ MM/DD"
+      let label;
+      if(w === 1) {
+        label = '上周';
+      } else {
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        label = `${fmtDate(mon)} ~ ${fmtDate(sun)}`;
+      }
+      return { infos, label };
+    }
+  }
+  return { infos: [], label: '' };
+}
+
 let infoDetailModId = null;
 
 function openInfoDetail(modId) {
@@ -3137,11 +3459,23 @@ function addInfoInDetail(modId) {
 // INTERACTIONS
 // ================================================================
 function switchView(v) {
+  const fromView = currentView;
   currentView = v;
   document.querySelectorAll('.view-tab').forEach(t=>t.classList.toggle('active',t.dataset.view===v));
   document.getElementById('weekView').classList.toggle('active',v==='week');
   document.getElementById('dayView').classList.toggle('active',v==='day');
-  document.getElementById('weekNavBar').style.display = v==='week'?'flex':'none';
+
+  // Day → Week: sync weekOffset to the week of the currently selected day
+  if(v==='week' && fromView==='day') {
+    const dayDate = new Date(NOW);
+    dayDate.setDate(dayDate.getDate() + dayOffset);
+    const dayMon = getMonday(dayDate);
+    const thisMon = getMonday(NOW);
+    weekOffset = Math.round((dayMon - thisMon) / (7*24*60*60*1000));
+    document.getElementById('weekLabel').textContent = getWeekLabel();
+  }
+  // Week → Day: do NOT sync dayOffset (keep day view independent)
+
   if(v==='day') renderDay();
   if(v==='week') renderWeek();
 }
@@ -3914,7 +4248,6 @@ async function bootAppData() {
   document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === 'week'));
   document.getElementById('weekView').classList.add('active');
   document.getElementById('dayView').classList.remove('active');
-  document.getElementById('weekNavBar').style.display = 'flex';
   document.getElementById('weekLabel').textContent = getWeekLabel();
 
   const result = await pullFromCloud({ silent: false, isInit: true });
