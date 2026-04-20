@@ -790,7 +790,7 @@
 
   .row.todo.draggable-todo { cursor: grab; }
   .row.todo.draggable-todo:active { cursor: grabbing; }
-  .row.todo.dragging { opacity: 0.4; }
+  .row.todo.dragging { opacity: 0; height: 0; padding: 0; margin: 0; overflow: hidden; border: none; }
 
   /* Sort drag indicator */
   .sort-indicator {
@@ -2974,8 +2974,8 @@ function renderWeek() {
     h += `<div class="module-body" id="body-${mod.id}">`;
 
     // TODOS
-    h += `<div class="sec-label"><span>📌 待办事项</span><button class="sec-add-btn" onclick="event.stopPropagation();addTodo('${mod.id}')">+ 新增</button></div>`;
     h += `<div class="todo-sort-zone" data-mod-id="${mod.id}" data-context="week">`;
+    h += `<div class="sec-label"><span>📌 待办事项</span><button class="sec-add-btn" onclick="event.stopPropagation();addTodo('${mod.id}')">+ 新增</button></div>`;
     notDone.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'week'); });
     h += `</div>`;
     if(done.length) {
@@ -3218,8 +3218,8 @@ function renderDay() {
       const visibleDone = grp.items.filter(t => t.status === 'done' && !allSlotIds.has(t.id));
       if(visibleNotDone.length === 0 && visibleDone.length === 0) return;
 
-      h += `<div class="sec-label" style="font-size:10px;padding:5px 20px"><span>${grp.mod.emoji} ${grp.mod.name}</span><button class="sec-add-btn" onclick="event.stopPropagation();addTodoInDayForModule('${grp.mod.id}')">+ 新增</button></div>`;
       h += `<div class="todo-sort-zone" data-mod-id="${grp.mod.id}" data-context="day">`;
+      h += `<div class="sec-label" style="font-size:10px;padding:5px 20px"><span>${grp.mod.emoji} ${grp.mod.name}</span><button class="sec-add-btn" onclick="event.stopPropagation();addTodoInDayForModule('${grp.mod.id}')">+ 新增</button></div>`;
       sortTodos(visibleNotDone).forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'day'); });
       h += `</div>`;
       visibleDone.forEach(t => { h += todoRowHTML(t, weekDates, todayStr, 'day'); });
