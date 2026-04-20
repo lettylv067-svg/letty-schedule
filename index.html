@@ -460,6 +460,8 @@
   .day-view.active { display:block; }
   .week-view { display:none; }
   .week-view.active { display:block; }
+  .ai-view { display:none; }
+  .ai-view.active { display:block; }
 
   .day-header {
     background: var(--card-solid);
@@ -1088,6 +1090,218 @@
   .user-menu-item:hover { background: rgba(118,118,128,0.08); }
   .user-menu-item.danger { color: var(--danger); }
 
+  /* ========== AI SMART INPUT (Tab 视图) ========== */
+  .ai-view-inner {
+    max-width: 640px; margin: 0 auto; padding: 24px 8px 40px;
+  }
+  .ai-view-title {
+    font-size: 22px; font-weight: 700;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; margin-bottom: 6px;
+  }
+  .ai-view-desc {
+    font-size: 13px; color: var(--text-tri); margin: 0 0 20px;
+  }
+
+
+  .ai-input-area {
+    width: 100%; min-height: 100px; max-height: 200px; resize: none;
+    border: 1.5px solid var(--border-strong); border-radius: 14px;
+    padding: 14px 16px; font-size: 14px; font-family: inherit;
+    line-height: 1.6; color: var(--text); background: rgba(0,0,0,0.02);
+    outline: none; transition: all .2s var(--trans-smooth);
+  }
+  .ai-input-area:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0,122,255,0.1);
+    background: #fff;
+  }
+  .ai-input-area::placeholder { color: var(--text-tri); }
+
+  /* AI image upload area */
+  .ai-img-zone {
+    margin-top: 10px; position: relative;
+  }
+  .ai-img-drop {
+    border: 1.5px dashed var(--border-strong); border-radius: 12px;
+    padding: 14px 16px; text-align: center; cursor: pointer;
+    color: var(--text-tri); font-size: 12px; line-height: 1.6;
+    transition: all .2s var(--trans-smooth);
+    background: rgba(0,0,0,0.01);
+  }
+  .ai-img-drop:hover, .ai-img-drop.dragover {
+    border-color: var(--primary); background: var(--primary-soft);
+    color: var(--primary);
+  }
+  .ai-img-drop-icon { font-size: 24px; display: block; margin-bottom: 4px; }
+  .ai-img-previews {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;
+  }
+  .ai-img-thumb {
+    position: relative; width: 72px; height: 72px; border-radius: 10px;
+    overflow: hidden; border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .ai-img-thumb img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .ai-img-thumb .ai-img-remove {
+    position: absolute; top: 2px; right: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: rgba(0,0,0,0.55); color: #fff;
+    border: none; cursor: pointer; font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .15s;
+  }
+  .ai-img-thumb:hover .ai-img-remove { opacity: 1; }
+
+  .ai-input-actions {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 12px; gap: 10px;
+  }
+  .ai-input-hint { font-size: 11px; color: var(--text-tri); }
+  .ai-parse-btn {
+    padding: 10px 24px; border: none; border-radius: 12px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    background: linear-gradient(135deg, #007aff, #5856d6);
+    color: #fff; transition: all .2s var(--trans-smooth);
+    box-shadow: 0 2px 10px rgba(0,122,255,0.2);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .ai-parse-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,122,255,0.3); }
+  .ai-parse-btn:active { transform: scale(0.97); }
+  .ai-parse-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .ai-parse-btn .ai-spin { display: inline-block; animation: spin .8s linear infinite; }
+
+  /* API Key config */
+  .ai-config-toggle {
+    font-size: 11px; color: var(--text-tri); cursor: pointer;
+    text-decoration: underline; text-underline-offset: 2px;
+    transition: color .2s;
+  }
+  .ai-config-toggle:hover { color: var(--text-sec); }
+  .ai-config-section {
+    margin-top: 12px; padding: 14px 16px;
+    background: rgba(0,0,0,0.02); border-radius: 12px;
+    border: 0.5px solid var(--border); display: none;
+  }
+  .ai-config-section.show { display: block; }
+  .ai-config-row {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  }
+  .ai-config-row:last-child { margin-bottom: 0; }
+  .ai-config-label {
+    font-size: 11px; font-weight: 600; color: var(--text-sec);
+    min-width: 60px; text-align: right;
+  }
+  .ai-config-input {
+    flex: 1; padding: 8px 12px; border: 1px solid var(--border-strong);
+    border-radius: 8px; font-size: 12px; font-family: inherit;
+    background: #fff; color: var(--text); outline: none;
+    transition: border-color .2s;
+  }
+  .ai-config-input:focus { border-color: var(--primary); }
+  .ai-config-select {
+    flex: 1; padding: 8px 12px; border: 1px solid var(--border-strong);
+    border-radius: 8px; font-size: 12px; font-family: inherit;
+    background: #fff; color: var(--text); outline: none; cursor: pointer;
+  }
+
+  /* Preview cards */
+  .ai-preview { margin-top: 16px; }
+  .ai-preview-title {
+    font-size: 13px; font-weight: 700; color: var(--text-sec);
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+  }
+  .ai-preview-card {
+    background: rgba(0,0,0,0.02); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 8px;
+    display: flex; align-items: flex-start; gap: 12px;
+    transition: all .2s;
+  }
+  .ai-preview-card:hover { border-color: var(--primary); background: var(--primary-soft); }
+  .ai-preview-card .ai-pc-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+  .ai-preview-card .ai-pc-body { flex: 1; min-width: 0; }
+  .ai-preview-card .ai-pc-text {
+    font-size: 14px; font-weight: 600; color: var(--text);
+    word-break: break-word;
+  }
+  .ai-preview-card .ai-pc-meta {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;
+  }
+  .ai-preview-card .ai-pc-tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500;
+  }
+  .ai-pc-tag.type-todo { background: var(--warn-bg); color: var(--warn-c); }
+  .ai-pc-tag.type-info { background: var(--info-bg); color: var(--info-c); }
+  .ai-pc-tag.mod-tag { background: rgba(0,122,255,0.08); color: var(--primary); }
+  .ai-pc-tag.date-tag { background: var(--done-bg); color: var(--done-c); }
+  .ai-preview-card .ai-pc-remove {
+    flex-shrink: 0; width: 24px; height: 24px;
+    border: none; background: none; color: var(--text-tri);
+    cursor: pointer; font-size: 14px; border-radius: 6px;
+    transition: all .15s;
+  }
+  .ai-preview-card .ai-pc-remove:hover { color: var(--danger); background: rgba(255,59,48,0.08); }
+
+  /* 编辑按钮 */
+  .ai-pc-actions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; margin-left: 2px; }
+  .ai-pc-edit {
+    width: 24px; height: 24px;
+    border: none; background: none; color: var(--text-tri);
+    cursor: pointer; border-radius: 6px; font-size: 12px;
+    transition: all .15s; display: flex; align-items: center; justify-content: center;
+  }
+  .ai-pc-edit:hover { color: var(--primary); background: var(--primary-soft); }
+
+  /* 编辑表单 */
+  .ai-pc-edit-form { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .ai-pc-edit-form input, .ai-pc-edit-form select {
+    font-size: 13px; padding: 6px 10px; border: 1px solid var(--border-strong);
+    border-radius: 8px; background: var(--card-solid); color: var(--text);
+    outline: none; font-family: inherit;
+  }
+  .ai-pc-edit-form input:focus, .ai-pc-edit-form select:focus {
+    border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0,122,255,0.1);
+  }
+  .ai-pc-edit-row { display: flex; gap: 8px; align-items: center; }
+  .ai-pc-edit-row label { font-size: 12px; color: var(--text-sec); min-width: 36px; flex-shrink: 0; }
+  .ai-pc-edit-row input, .ai-pc-edit-row select { flex: 1; }
+  .ai-pc-edit-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px; }
+  .ai-pc-edit-actions button {
+    font-size: 12px; padding: 4px 14px; border-radius: 8px;
+    border: none; cursor: pointer; font-weight: 500; transition: all .15s;
+  }
+  .ai-pc-edit-save { background: var(--primary); color: #fff; }
+  .ai-pc-edit-save:hover { opacity: 0.85; }
+  .ai-pc-edit-cancel { background: rgba(0,0,0,0.05); color: var(--text-sec); }
+  .ai-pc-edit-cancel:hover { background: rgba(0,0,0,0.1); }
+
+  .ai-confirm-bar {
+    display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;
+  }
+  .ai-confirm-btn {
+    padding: 10px 28px; border-radius: 12px; font-size: 14px;
+    font-weight: 600; cursor: pointer; border: none;
+    transition: all .2s var(--trans-smooth);
+  }
+  .ai-confirm-btn:active { transform: scale(0.96); }
+  .ai-confirm-btn.cancel { background: rgba(118,118,128,0.12); color: var(--text); }
+  .ai-confirm-btn.cancel:hover { background: rgba(118,118,128,0.18); }
+  .ai-confirm-btn.confirm {
+    background: linear-gradient(135deg, #34c759, #30b04d);
+    color: #fff; box-shadow: 0 2px 10px rgba(52,199,89,0.25);
+  }
+  .ai-confirm-btn.confirm:hover { box-shadow: 0 4px 16px rgba(52,199,89,0.35); }
+
+  .ai-error-msg {
+    margin-top: 12px; padding: 10px 14px; border-radius: 10px;
+    background: rgba(255,59,48,0.08); color: var(--danger);
+    font-size: 12px; font-weight: 500; display: none;
+  }
+  .ai-error-msg.show { display: block; }
+
   /* ========== RESPONSIVE ========== */
   @media (max-width:860px) {
     .module-grid { grid-template-columns: 1fr; }
@@ -1100,6 +1314,7 @@
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 
@@ -1159,6 +1374,7 @@
     <div class="view-tabs">
       <button class="view-tab active" data-view="week" onclick="switchView('week')">周视图</button>
       <button class="view-tab" data-view="day" onclick="switchView('day')">日视图</button>
+      <button class="view-tab" data-view="ai" onclick="switchView('ai')">✨ 智能识别</button>
     </div>
   </div>
   <div class="header-right">
@@ -1182,6 +1398,72 @@
 <div class="main page-main" id="pageMain">
   <div class="week-view active" id="weekView"></div>
   <div class="day-view" id="dayView"></div>
+  <div class="ai-view" id="aiView">
+    <div class="ai-view-inner" id="aiPanel">
+      <div class="ai-view-title">✨ 智能识别</div>
+      <p class="ai-view-desc">粘贴文字、截图或聊天记录，AI 自动识别并分类为待办/信息</p>
+
+      <textarea class="ai-input-area" id="aiInputArea"
+        placeholder="粘贴消息、会议纪要、或直接描述你的待办…&#10;&#10;例如：&#10;· 明天下午3点和产品组开会讨论联想功能方案&#10;· 本周五前完成输入法 V2.3 版本评审材料&#10;· FYI：竞品搜狗上线了 AI 写作功能"></textarea>
+
+      <!-- 图片上传/粘贴区 -->
+      <div class="ai-img-zone" id="aiImgZone">
+        <div class="ai-img-drop" id="aiImgDrop"
+          onclick="document.getElementById('aiImgInput').click()">
+          <span class="ai-img-drop-icon">📷</span>
+          拖拽图片到这里、点击选择、或直接 <strong>Ctrl+V 粘贴截图</strong>
+        </div>
+        <input type="file" id="aiImgInput" accept="image/*" multiple
+          style="display:none" onchange="handleAiImgSelect(event)">
+        <div class="ai-img-previews" id="aiImgPreviews"></div>
+      </div>
+
+      <div class="ai-input-actions">
+        <div>
+          <span class="ai-config-toggle" onclick="toggleAiConfig()">⚙️ 配置 API</span>
+          <span class="ai-input-hint" style="margin-left:8px;">支持文字 + 截图，AI 自动识别分类</span>
+        </div>
+        <button class="ai-parse-btn" id="aiParseBtn" onclick="aiParse()">
+          <span id="aiParseBtnText">✨ 解析</span>
+        </button>
+      </div>
+
+      <div class="ai-config-section" id="aiConfigSection">
+        <div class="ai-config-row">
+          <span class="ai-config-label">模型</span>
+          <select class="ai-config-select" id="aiModelSelect">
+            <option value="custom">自定义 (OpenAI 兼容)</option>
+          </select>
+        </div>
+        <div class="ai-config-row">
+          <span class="ai-config-label">API URL</span>
+          <input class="ai-config-input" id="aiApiUrl" placeholder="https://api.deepseek.com/v1/chat/completions" />
+        </div>
+        <div class="ai-config-row">
+          <span class="ai-config-label">API Key</span>
+          <input class="ai-config-input" id="aiApiKey" type="password" placeholder="sk-..." />
+        </div>
+        <div class="ai-config-row">
+          <span class="ai-config-label">模型名</span>
+          <input class="ai-config-input" id="aiModelName" placeholder="deepseek-chat" />
+        </div>
+        <div class="ai-config-row" style="justify-content:flex-end;">
+          <button class="modal-btn confirm" style="padding:6px 18px; font-size:12px;" onclick="saveAiConfig()">保存配置</button>
+        </div>
+      </div>
+
+      <div class="ai-error-msg" id="aiErrorMsg"></div>
+
+      <div class="ai-preview" id="aiPreview" style="display:none;">
+        <div class="ai-preview-title">📋 识别结果 <span id="aiPreviewCount"></span></div>
+        <div id="aiPreviewCards"></div>
+        <div class="ai-confirm-bar">
+          <button class="ai-confirm-btn cancel" onclick="clearAiPreview()">清除</button>
+          <button class="ai-confirm-btn confirm" onclick="aiConfirmAll()">✅ 全部添加</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- 信息备注详情内页 -->
@@ -3502,6 +3784,13 @@ function switchView(v) {
   document.querySelectorAll('.view-tab').forEach(t=>t.classList.toggle('active',t.dataset.view===v));
   document.getElementById('weekView').classList.toggle('active',v==='week');
   document.getElementById('dayView').classList.toggle('active',v==='day');
+  document.getElementById('aiView').classList.toggle('active',v==='ai');
+
+  // 切到 AI tab 时自动恢复配置和聚焦
+  if (v === 'ai') {
+    restoreAiConfig();
+    setTimeout(() => document.getElementById('aiInputArea')?.focus(), 100);
+  }
 
   // Day → Week: sync weekOffset to the week of the currently selected day
   if(v==='week' && fromView==='day') {
@@ -3982,6 +4271,36 @@ function setTimeSlots(dateStr, slots) {
 // ================================================================
 let dragTodoId = null;
 
+// --- Auto-scroll during drag (fixes "can't drag upward" bug) ---
+let _dragScrollRAF = null;
+const SCROLL_EDGE = 60;   // px from viewport edge to start scrolling
+const SCROLL_SPEED = 12;  // px per frame
+
+function _startDragScroll(clientY) {
+  _stopDragScroll();
+  const h = window.innerHeight;
+  let delta = 0;
+  if (clientY < SCROLL_EDGE) {
+    delta = -SCROLL_SPEED * Math.max(0.3, 1 - clientY / SCROLL_EDGE);
+  } else if (clientY > h - SCROLL_EDGE) {
+    delta = SCROLL_SPEED * Math.max(0.3, 1 - (h - clientY) / SCROLL_EDGE);
+  }
+  if (delta !== 0 && dragTodoId) {
+    window.scrollBy(0, delta);
+    _dragScrollRAF = requestAnimationFrame(() => _startDragScroll(clientY));
+  }
+}
+
+function _stopDragScroll() {
+  if (_dragScrollRAF) { cancelAnimationFrame(_dragScrollRAF); _dragScrollRAF = null; }
+}
+
+// Global dragover drives auto-scroll (more reliable coordinates than 'drag' event)
+document.addEventListener('dragover', function _autoScrollOnDragOver(e) {
+  if (!dragTodoId) return;
+  _startDragScroll(e.clientY);
+});
+
 function onTodoDragStart(event, todoId) {
   dragTodoId = todoId;
   event.dataTransfer.effectAllowed = 'move';
@@ -3994,6 +4313,7 @@ function onTodoDragStart(event, todoId) {
 }
 
 document.addEventListener('dragend', () => {
+  _stopDragScroll();
   document.querySelectorAll('.row.dragging, .ts-item.dragging').forEach(el => el.classList.remove('dragging'));
   document.querySelectorAll('.time-slot.drag-over').forEach(el => el.classList.remove('drag-over'));
   // Clean up sort indicators
@@ -4408,6 +4728,7 @@ async function bootAppData() {
   document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === 'week'));
   document.getElementById('weekView').classList.add('active');
   document.getElementById('dayView').classList.remove('active');
+  document.getElementById('aiView').classList.remove('active');
   document.getElementById('weekLabel').textContent = getWeekLabel();
 
   const result = await pullFromCloud({ silent: false, isInit: true });
@@ -4542,6 +4863,584 @@ window.addEventListener('beforeunload', () => {
     }).catch(() => {});
   } catch(e) {}
 });
+// ================================================================
+// AI SMART INPUT — LLM-based natural language → structured todo/info
+// ================================================================
+const AI_CONFIG_KEY = 'schedule_ai_config';
+let _aiParsedItems = [];
+let _aiImages = []; // base64 images array
+
+// --- Config persistence ---
+function loadAiConfig() {
+  try {
+    const raw = localStorage.getItem(AI_CONFIG_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return { apiUrl: 'https://api.deepseek.com/v1/chat/completions', apiKey: 'sk-ec8d47281e804e28b15afe5d74362e91', modelName: 'deepseek-chat' };
+}
+
+function saveAiConfig() {
+  const cfg = {
+    apiUrl: document.getElementById('aiApiUrl').value.trim(),
+    apiKey: document.getElementById('aiApiKey').value.trim(),
+    modelName: document.getElementById('aiModelName').value.trim() || 'deepseek-chat'
+  };
+  localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(cfg));
+  toast('✅ API 配置已保存');
+  document.getElementById('aiConfigSection').classList.remove('show');
+}
+
+function restoreAiConfig() {
+  const cfg = loadAiConfig();
+  document.getElementById('aiApiUrl').value = cfg.apiUrl || '';
+  document.getElementById('aiApiKey').value = cfg.apiKey || '';
+  document.getElementById('aiModelName').value = cfg.modelName || 'deepseek-chat';
+}
+
+// --- Panel open/close (now switches tab) ---
+function openAiPanel() {
+  switchView('ai');
+}
+
+function closeAiPanel() {
+  // 添加完事项后切回之前的视图
+  switchView(currentView === 'ai' ? 'week' : currentView);
+}
+
+function closeAiPanelOnOverlay(e) {
+  // no-op: overlay removed
+}
+
+function toggleAiConfig() {
+  document.getElementById('aiConfigSection').classList.toggle('show');
+}
+
+// ========== IMAGE HANDLING ==========
+
+// Convert File/Blob → base64 data URL
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Add images from File list
+async function addAiImages(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    if (_aiImages.length >= 5) {
+      toast('最多支持 5 张图片');
+      break;
+    }
+    try {
+      const dataUrl = await fileToBase64(file);
+      _aiImages.push(dataUrl);
+    } catch(e) {
+      console.error('图片读取失败', e);
+    }
+  }
+  renderAiImagePreviews();
+}
+
+// Render image thumbnails
+function renderAiImagePreviews() {
+  const container = document.getElementById('aiImgPreviews');
+  if (!_aiImages.length) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = _aiImages.map((src, i) =>
+    `<div class="ai-img-thumb">
+      <img src="${src}" alt="截图 ${i+1}">
+      <button class="ai-img-remove" onclick="removeAiImage(${i})">✕</button>
+    </div>`
+  ).join('');
+}
+
+function removeAiImage(idx) {
+  _aiImages.splice(idx, 1);
+  renderAiImagePreviews();
+}
+
+// File input handler
+function handleAiImgSelect(e) {
+  if (e.target.files) addAiImages(Array.from(e.target.files));
+  e.target.value = ''; // allow re-select same file
+}
+
+// Drag & drop
+function initAiImageDragDrop() {
+  const drop = document.getElementById('aiImgDrop');
+  if (!drop) return;
+
+  drop.addEventListener('dragover', e => {
+    e.preventDefault(); e.stopPropagation();
+    drop.classList.add('dragover');
+  });
+  drop.addEventListener('dragleave', e => {
+    e.preventDefault(); e.stopPropagation();
+    drop.classList.remove('dragover');
+  });
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    drop.classList.remove('dragover');
+    if (e.dataTransfer.files.length) addAiImages(Array.from(e.dataTransfer.files));
+  });
+}
+
+// Paste handler — intercept Ctrl+V on the panel
+function initAiPasteHandler() {
+  const panel = document.getElementById('aiPanel');
+  if (!panel) return;
+
+  panel.addEventListener('paste', async e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles = [];
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length) {
+      e.preventDefault(); // prevent pasting image data into textarea
+      await addAiImages(imageFiles);
+    }
+  });
+}
+
+// ========== BUILD LLM MESSAGES (multimodal) ==========
+
+function buildAiSystemPrompt() {
+  // Build rich module descriptions with sample content
+  const moduleDescriptions = MODULES.map(m => {
+    let desc = `- "${m.id}"（${m.emoji} ${m.name}）`;
+    // Append a few existing todos as examples so LLM understands what this module is for
+    const sampleTodos = (m.todos || []).filter(t => t.text).slice(-5).map(t => t.text);
+    const sampleInfos = (m.infos || []).filter(i => i.text).slice(-3).map(i => i.text.substring(0, 30));
+    const samples = [...sampleTodos, ...sampleInfos];
+    if (samples.length > 0) {
+      desc += `\n  已有内容示例：${samples.map(s => `"${s}"`).join('、')}`;
+    }
+    return desc;
+  }).join('\n');
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const weekDays = ['日','一','二','三','四','五','六'];
+  const dayOfWeek = '星期' + weekDays[today.getDay()];
+
+  return `你是一个日程管理助手。用户会发给你一段文字和/或截图，你需要从中识别出事项并输出 JSON 数组。
+
+今天是 ${todayStr}（${dayOfWeek}）。
+
+## ⚠️ 首要规则：区分"指令"和"内容"
+
+用户输入框里的文字可能包含两种信息：
+1. **指令**：告诉你如何处理截图/内容的操作要求（如"周三提醒我""加个备注""放到XX模块"）
+2. **内容**：需要被提取为事项的实际信息
+
+**判断方法**：
+- 如果用户文字是在**指挥你怎么做**（含"提醒我""帮我""增加备注""放到""标记为"等），这是指令，不要把指令本身变成一条待办
+- 如果用户文字是在**描述一件事**（含具体的工作内容、会议、任务等），这是内容，需要提取
+- 当同时有指令 + 截图时：**从截图中提取事项，按指令中的要求设置日期/备注/模块等属性**
+
+**示例**：
+- 用户写"周三周四提醒，增加备注" + 贴了截图 → 指令是"设日期为周三/周四，给每条事项加详细备注"，内容来自截图
+- 用户写"明天下午3点开会讨论方案" → 这是内容，提取为待办
+- 用户写"把这个加到产品模块" + 贴了截图 → 指令是"放入产品模块"，内容来自截图
+
+## 可用模块
+${moduleDescriptions}
+
+## 模块分类策略
+1. **如果用户指令指定了模块**，直接用指定的模块
+2. **优先看已有内容示例**：如果某个模块已有的 todo 和新事项属于同一类话题/工作领域，就放进那个模块
+3. **其次看模块名**：根据模块名的语义判断
+4. **实在匹配不上**：放入第一个模块 "${MODULES[0] ? MODULES[0].id : 'inbox'}" 作为收件箱
+
+## 输出格式
+输出一个 JSON 数组，每个元素包含：
+- "type": "todo"（需要执行/跟进/关注的事项）或 "info"（值得记住的问题、结论、认知）
+- "module": 最匹配的模块 ID（从上面的列表选择）
+- "text": 事项的简洁描述，不超过 30 字
+- "date": 截止日期或发生日期，格式 "MM/DD"（例如 "04/21"），没有则为 ""
+- "note": 关键上下文信息，包括背景原因、前置依赖、决策逻辑等，不超过 100 字，没有则为 ""
+
+## note 字段的写法
+note 不是简单复述标题，而是补充"为什么"和"关键细节"：
+- ✅ "入口是红点推送的前置依赖，没有入口被推了红点不会生效。需先把入口放量到100%，过1天再推红点" — 解释了因果关系和执行顺序
+- ✅ "等插件页跳转定位需求上线后再推。入口放量是前置条件" — 说明了前置条件
+- ❌ "图片1内容" — 没有任何信息量
+- ❌ "预计周三/周四" — 这只是把日期重复了一遍
+
+## type 判断规则
+### todo（需要行动的事项）
+- 含有"要做/记得/别忘了/deadline/提交/完成/安排/准备/跟进/推进/关注" → todo
+- 有明确行动动词（做/写/改/发/约/确认/检查/整理） → todo
+- 面试、会议、约会等有时间点的事项 → todo
+- 需要关注某个问题的进展 → todo
+
+### info（值得记住的认知/结论/问题，但不需要直接行动）
+- 纯信息记录、新闻、动态 → info
+- ⚠️ 如果不确定是否值得记录为 info，就不要生成这条 info
+
+### ⚠️ info 的核心原则：提炼问题本质，不记录案例细节
+记录的是**这件事反映出的问题/认知/结论**，而不是复述原始内容中的具体案例、环境信息或技术参数。
+好的 info 示例：
+  ✅ "语音转文字后用户手动修改的词不生效" — 提炼了问题本质
+  ❌ "安卓正式环境，uin:884813085，转字结果错误" — 这是在抄案例细节
+环境信息（系统版本、uin、时间戳等）只是调试素材，不应出现在 text 字段中，可放入 note。
+
+## 截图/聊天记录处理
+- 截图通常是工作聊天记录、bug 反馈、日程表等
+- **关键**：理解截图在讨论什么事情，提取需要关注/需要做的事
+- **详细备注**：从截图中提取关键的决策逻辑、因果关系、前置条件等写入 note 字段
+- 忽略 UI 元素（按钮、导航栏、头像、时间戳等）
+- **来源追踪**：如果能从用户文字或截图中识别出来源（群名、频道名、发言人），在 note 开头标注"来自：xxx"；识别不出就不要编造
+
+## 日期识别
+- "明天" = ${todayStr} 的下一天，"周X" = 本周的星期X，"下周X" = 下周的星期X，"X月X日" 直接转换
+- 如果用户指令中指定了日期（如"周三提醒"），所有从截图提取的事项都应用这个日期
+- 如果截图内容中也有时间信息，优先用用户指令中的时间
+
+## 重要
+- 只输出 JSON 数组，不要任何其他文字、解释或 markdown 标记
+- 一条消息中可能包含多个事项，请拆分为多个 JSON 对象
+- 如果消息内容模糊，倾向于标记为 todo（宁多勿漏）
+- 宁少勿滥：如果一条事项既不需要行动，其问题本质也不值得记住，就不要生成
+- **绝对不要把用户的操作指令本身变成一条待办事项**`;
+}
+
+// --- Call LLM API (text only — images pre-processed via OCR) ---
+async function callLLM(userText) {
+  const cfg = loadAiConfig();
+  if (!cfg.apiUrl || !cfg.apiKey) {
+    throw new Error('请先配置 API URL 和 API Key（点击 ⚙️ 配置 API）');
+  }
+
+  const systemPrompt = buildAiSystemPrompt();
+
+  const body = {
+    model: cfg.modelName || 'deepseek-chat',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userText }
+    ],
+    temperature: 0.1,
+    max_tokens: 2000
+  };
+
+  const resp = await fetch(cfg.apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${cfg.apiKey}`
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(`API 请求失败 (${resp.status}): ${errText.substring(0, 200)}`);
+  }
+
+  const data = await resp.json();
+
+  let content = '';
+  if (data.choices && data.choices[0]) {
+    content = data.choices[0].message?.content || data.choices[0].text || '';
+  } else if (data.content) {
+    content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content);
+  } else if (data.result) {
+    content = typeof data.result === 'string' ? data.result : JSON.stringify(data.result);
+  }
+
+  content = content.trim();
+  if (content.startsWith('```')) {
+    content = content.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+  }
+
+  try {
+    const items = JSON.parse(content);
+    return Array.isArray(items) ? items : [items];
+  } catch(e) {
+    throw new Error('AI 返回的格式无法解析，请重试。原始响应：' + content.substring(0, 200));
+  }
+}
+
+// --- OCR: extract text from images using Tesseract.js ---
+async function ocrImages(dataUrls) {
+  if (!dataUrls || dataUrls.length === 0) return '';
+  if (typeof Tesseract === 'undefined') {
+    throw new Error('OCR 组件加载失败，请刷新页面重试');
+  }
+
+  const results = [];
+  for (let i = 0; i < dataUrls.length; i++) {
+    try {
+      const { data: { text } } = await Tesseract.recognize(dataUrls[i], 'chi_sim+eng', {
+        logger: () => {} // silent
+      });
+      if (text && text.trim()) {
+        results.push(`[图片${i+1}内容]:\n${text.trim()}`);
+      }
+    } catch(e) {
+      console.error('OCR failed for image', i, e);
+      results.push(`[图片${i+1}]: OCR 识别失败`);
+    }
+  }
+  return results.join('\n\n');
+}
+
+// --- Parse button handler (OCR images → merge text → LLM) ---
+async function aiParse() {
+  const text = document.getElementById('aiInputArea').value.trim();
+  const hasImages = _aiImages.length > 0;
+
+  if (!text && !hasImages) {
+    toast('请输入文字或上传截图');
+    document.getElementById('aiInputArea').focus();
+    return;
+  }
+
+  const btn = document.getElementById('aiParseBtn');
+  const btnText = document.getElementById('aiParseBtnText');
+  const errEl = document.getElementById('aiErrorMsg');
+
+  btn.disabled = true;
+  errEl.classList.remove('show');
+
+  try {
+    // Step 1: OCR images if any
+    let finalText = text;
+    if (hasImages) {
+      btnText.innerHTML = '<span class="ai-spin">⏳</span> 识别图片…';
+      const ocrText = await ocrImages(_aiImages);
+      if (ocrText) {
+        finalText = finalText ? finalText + '\n\n' + ocrText : ocrText;
+      }
+    }
+
+    if (!finalText.trim()) {
+      throw new Error('图片中未识别到文字，请手动输入或换一张清晰的截图');
+    }
+
+    // Step 2: Send merged text to LLM
+    btnText.innerHTML = '<span class="ai-spin">⏳</span> AI 解析中…';
+    const items = await callLLM(finalText);
+    _aiParsedItems = items.map((item, i) => ({
+      _idx: i,
+      type: item.type === 'info' ? 'info' : 'todo',
+      module: item.module || (MODULES[0] ? MODULES[0].id : ''),
+      text: item.text || '未识别内容',
+      date: item.date || '',
+      note: item.note || ''
+    }));
+    renderAiPreview();
+  } catch(e) {
+    errEl.textContent = '❌ ' + e.message;
+    errEl.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    btnText.textContent = '✨ 解析';
+  }
+}
+
+// --- Render preview cards ---
+function renderAiPreview() {
+  const container = document.getElementById('aiPreviewCards');
+  const wrapper = document.getElementById('aiPreview');
+
+  if (!_aiParsedItems.length) {
+    wrapper.style.display = 'none';
+    return;
+  }
+
+  wrapper.style.display = 'block';
+  document.getElementById('aiPreviewCount').textContent = `(${_aiParsedItems.length} 条)`;
+
+  let html = '';
+  _aiParsedItems.forEach((item, i) => {
+    const mod = findMod(item.module);
+    const modEmoji = mod ? mod.emoji : '📥';
+    const modName = mod ? mod.name : item.module;
+    const typeLabel = item.type === 'todo' ? '待办' : '信息';
+    const typeClass = item.type === 'todo' ? 'type-todo' : 'type-info';
+
+    html += `<div class="ai-preview-card" data-ai-idx="${i}" id="aiCard${i}">
+      <span class="ai-pc-icon">${modEmoji}</span>
+      <div class="ai-pc-body">
+        <div class="ai-pc-text" id="aiCardText${i}">${escHtml(item.text)}</div>
+        <div class="ai-pc-meta">
+          <span class="ai-pc-tag ${typeClass}">${typeLabel}</span>
+          <span class="ai-pc-tag mod-tag">${modName}</span>
+          ${item.date ? `<span class="ai-pc-tag date-tag">📅 ${item.date}</span>` : ''}
+        </div>
+        ${item.note ? `<div class="ai-pc-note" style="font-size:11px;color:var(--text-tri);margin-top:4px;">${escHtml(item.note)}</div>` : ''}
+        <div class="ai-pc-edit-form" id="aiEditForm${i}" style="display:none;"></div>
+      </div>
+      <div class="ai-pc-actions">
+        <button class="ai-pc-edit" onclick="openAiEdit(${i})" title="编辑">✏️</button>
+        <button class="ai-pc-remove" onclick="removeAiItem(${i})" title="移除">✕</button>
+      </div>
+    </div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+function escHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function removeAiItem(idx) {
+  _aiParsedItems.splice(idx, 1);
+  renderAiPreview();
+  if (!_aiParsedItems.length) {
+    document.getElementById('aiPreview').style.display = 'none';
+  }
+}
+
+function openAiEdit(idx) {
+  const item = _aiParsedItems[idx];
+  if (!item) return;
+  const form = document.getElementById('aiEditForm' + idx);
+  if (!form) return;
+
+  // Build module options
+  const modOpts = MODULES.map(m =>
+    `<option value="${m.id}" ${m.id === item.module ? 'selected' : ''}>${m.emoji} ${m.name}</option>`
+  ).join('');
+
+  form.innerHTML = `
+    <div class="ai-pc-edit-row">
+      <label>内容</label>
+      <input type="text" id="aiEditText${idx}" value="${escAttr(item.text)}" placeholder="事项描述">
+    </div>
+    <div class="ai-pc-edit-row">
+      <label>备注</label>
+      <input type="text" id="aiEditNote${idx}" value="${escAttr(item.note || '')}" placeholder="补充信息">
+    </div>
+    <div class="ai-pc-edit-row">
+      <label>模块</label>
+      <select id="aiEditMod${idx}">${modOpts}</select>
+    </div>
+    <div class="ai-pc-edit-row">
+      <label>类型</label>
+      <select id="aiEditType${idx}">
+        <option value="todo" ${item.type === 'todo' ? 'selected' : ''}>待办</option>
+        <option value="info" ${item.type === 'info' ? 'selected' : ''}>信息</option>
+      </select>
+    </div>
+    <div class="ai-pc-edit-row">
+      <label>日期</label>
+      <input type="text" id="aiEditDate${idx}" value="${escAttr(item.date || '')}" placeholder="MM/DD 或留空">
+    </div>
+    <div class="ai-pc-edit-actions">
+      <button class="ai-pc-edit-cancel" onclick="cancelAiEdit(${idx})">取消</button>
+      <button class="ai-pc-edit-save" onclick="saveAiEdit(${idx})">保存</button>
+    </div>
+  `;
+  form.style.display = 'flex';
+}
+
+function saveAiEdit(idx) {
+  const item = _aiParsedItems[idx];
+  if (!item) return;
+  item.text = (document.getElementById('aiEditText' + idx)?.value || '').trim() || item.text;
+  item.note = (document.getElementById('aiEditNote' + idx)?.value || '').trim();
+  item.module = document.getElementById('aiEditMod' + idx)?.value || item.module;
+  item.type = document.getElementById('aiEditType' + idx)?.value || item.type;
+  item.date = (document.getElementById('aiEditDate' + idx)?.value || '').trim();
+  renderAiPreview();
+}
+
+function cancelAiEdit(idx) {
+  const form = document.getElementById('aiEditForm' + idx);
+  if (form) { form.style.display = 'none'; form.innerHTML = ''; }
+}
+
+function escAttr(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function clearAiPreview() {
+  _aiParsedItems = [];
+  document.getElementById('aiPreview').style.display = 'none';
+  document.getElementById('aiPreviewCards').innerHTML = '';
+}
+
+// --- Confirm & write to MODULES ---
+function aiConfirmAll() {
+  if (!_aiParsedItems.length) return;
+
+  let addedCount = 0;
+  const weekMonday = fmtDate(getCurrentWeekMonday());
+
+  _aiParsedItems.forEach(item => {
+    let mod = findMod(item.module);
+    if (!mod && MODULES.length > 0) {
+      mod = MODULES[0]; // fallback to first module
+    }
+    if (!mod) return;
+
+    const newId = uid();
+
+    if (item.type === 'todo') {
+      const todoObj = {
+        id: newId,
+        text: item.text,
+        status: 'pending',
+        note: item.note || '',
+        date: item.date || '',
+        week: weekMonday
+      };
+      // Auto-detect date from text if not provided by AI
+      if (!todoObj.date) {
+        const detected = parseTimeFromText(todoObj.text, null);
+        if (detected) todoObj.date = detected;
+      }
+      mod.todos.push(todoObj);
+    } else {
+      mod.infos.push({
+        id: newId,
+        text: item.text + (item.note ? '\n' + item.note : ''),
+        highlighted: false,
+        week: weekMonday
+      });
+    }
+    addedCount++;
+  });
+
+  if (addedCount > 0) {
+    saveState();
+    if (currentView === 'week') renderWeek(); else renderDay();
+    toast(`✅ 已添加 ${addedCount} 条事项`);
+  }
+
+  // Clean up
+  clearAiPreview();
+  document.getElementById('aiInputArea').value = '';
+  _aiImages = [];
+  renderAiImagePreviews();
+  closeAiPanel();
+}
+
+// --- Init: restore config + image handlers on page load ---
+document.addEventListener('DOMContentLoaded', () => {
+  restoreAiConfig();
+  initAiImageDragDrop();
+  initAiPasteHandler();
+});
+
 </script>
 </body>
 </html>
