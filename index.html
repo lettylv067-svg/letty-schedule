@@ -4216,18 +4216,27 @@ function assignDateDay(todoId, dateStr) {
   const r = findTodo(todoId);
   if(!r) return;
 
-  // Remove todo from old date's time slots (so it doesn't linger in the current day's slot view)
-  const oldDate = r.todo.date;
-  if(oldDate) {
-    const oldSlots = getTimeSlots(oldDate);
-    let slotDirty = false;
+  // Determine the current day-view date (the date the user is looking at)
+  const viewD = new Date(NOW); viewD.setDate(viewD.getDate() + dayOffset);
+  const viewDateStr = fmtDate(viewD);
+
+  // Collect all dates we need to clean this todo from:
+  // 1) the todo's current date field  2) the day-view's displayed date
+  const datesToClean = new Set();
+  if(r.todo.date) datesToClean.add(r.todo.date);
+  datesToClean.add(viewDateStr);
+
+  // Remove todo from time slots of all relevant dates
+  datesToClean.forEach(d => {
+    const slots = getTimeSlots(d);
+    let dirty = false;
     ['morning','afternoon','evening'].forEach(k => {
-      if(!oldSlots[k]) return;
-      const idx = oldSlots[k].indexOf(todoId);
-      if(idx !== -1) { oldSlots[k].splice(idx, 1); slotDirty = true; }
+      if(!slots[k]) return;
+      const idx = slots[k].indexOf(todoId);
+      if(idx !== -1) { slots[k].splice(idx, 1); dirty = true; }
     });
-    if(slotDirty) setTimeSlots(oldDate, oldSlots);
-  }
+    if(dirty) setTimeSlots(d, slots);
+  });
 
   r.todo.date = dateStr;
   if(dateStr) { r.todo.week = fmtDate(getMonday(dateToObj(dateStr))); }
@@ -4248,18 +4257,24 @@ function assignDate(todoId, dateStr) {
   const r = findTodo(todoId);
   if(!r) return;
 
-  // Remove todo from old date's time slots
-  const oldDate = r.todo.date;
-  if(oldDate) {
-    const oldSlots = getTimeSlots(oldDate);
-    let slotDirty = false;
+  // Remove todo from time slots of all potentially relevant dates
+  // (todo.date may differ from the day-view date where it was physically placed)
+  const datesToClean = new Set();
+  if(r.todo.date) datesToClean.add(r.todo.date);
+  // Also clean from current day-view date
+  const viewD = new Date(NOW); viewD.setDate(viewD.getDate() + dayOffset);
+  datesToClean.add(fmtDate(viewD));
+
+  datesToClean.forEach(d => {
+    const slots = getTimeSlots(d);
+    let dirty = false;
     ['morning','afternoon','evening'].forEach(k => {
-      if(!oldSlots[k]) return;
-      const idx = oldSlots[k].indexOf(todoId);
-      if(idx !== -1) { oldSlots[k].splice(idx, 1); slotDirty = true; }
+      if(!slots[k]) return;
+      const idx = slots[k].indexOf(todoId);
+      if(idx !== -1) { slots[k].splice(idx, 1); dirty = true; }
     });
-    if(slotDirty) setTimeSlots(oldDate, oldSlots);
-  }
+    if(dirty) setTimeSlots(d, slots);
+  });
 
   r.todo.date = dateStr;
   if(dateStr) { r.todo.week = fmtDate(getMonday(dateToObj(dateStr))); }
