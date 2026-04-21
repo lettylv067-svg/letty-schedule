@@ -749,7 +749,7 @@
     cursor: grab;
   }
   .ts-item:active { cursor: grabbing; }
-  .ts-item.dragging { opacity: 0.4; }
+  .ts-item.dragging { opacity: 0.15; pointer-events: none; }
   .ts-item:hover { background: rgba(0,0,0,0.04); }
   .ts-item .ts-cb { flex-shrink: 0; }
   .ts-item .ts-cb input[type="checkbox"] {
@@ -4379,7 +4379,7 @@ document.addEventListener('dragend', () => {
   document.querySelectorAll('.time-slot.drag-over').forEach(el => el.classList.remove('drag-over'));
   document.querySelectorAll('.sort-indicator').forEach(el => el.remove());
   document.querySelectorAll('.todo-sort-zone.sort-drag-over').forEach(el => el.classList.remove('sort-drag-over'));
-  _resetSlotSnap();
+  _hideSlotLine();
   dragTodoId = null;
 });
 
@@ -4500,55 +4500,50 @@ document.addEventListener('drop', function(e) {
   handleSortDrop(e, zone, todoId);
 });
 
-// ---- Slot reorder: overlay-based approach ----
-// Key design: indicator is position:fixed overlay, NEVER inserted into flow layout.
-// This avoids all DOM-mutation-during-dragover bugs.
-let _slotSnap = null;       // { slotEl, items: [{id, midY}] }
-let _slotSnapIdx = -1;      // last computed insert index (skip redundant work)
-let _slotIndicator = null;  // single fixed-position div
+// ---- Slot reorder: live-read approach ----
+// No snapshot caching — we read DOM rects live each frame.
+// Dragging item has pointer-events:none + opacity:0.15 so it won't interfere.
+// Indicator is position:fixed overlay, never in DOM flow.
+let _slotIndicator = null;
+let _slotLastIdx = -1;    // visual dedup only
+let _slotLastSlot = null;
 
 function _ensureSlotIndicator() {
   if(_slotIndicator) return _slotIndicator;
   const d = document.createElement('div');
   d.className = 'slot-reorder-line';
-  d.style.cssText = 'position:fixed;left:0;right:0;height:2px;background:var(--primary,#007aff);border-radius:1px;pointer-events:none;z-index:9999;display:none;margin:0 16px;';
+  d.style.cssText = 'position:fixed;height:2px;background:var(--primary,#007aff);border-radius:1px;pointer-events:none;z-index:9999;display:none;';
   document.body.appendChild(d);
   _slotIndicator = d;
   return d;
 }
 
-function _buildSlotSnapshot(slotEl) {
-  if(!slotEl) return null;
-  const items = [...slotEl.querySelectorAll('.ts-item')].map(el => {
+// Read live positions of non-dragging items in a slot
+function _readSlotItems(slotEl, dragId) {
+  return [...slotEl.querySelectorAll('.ts-item:not(.dragging)')].filter(el => el.dataset.id !== dragId).map(el => {
     const r = el.getBoundingClientRect();
     return { id: el.dataset.id, top: r.top, bottom: r.bottom, midY: r.top + r.height / 2 };
   });
-  return { slotEl, items };
 }
 
-function _calcSlotInsertIdx(clientY, snap, dragId) {
-  const others = snap.items.filter(it => it.id !== dragId);
-  for(let i = 0; i < others.length; i++) {
-    if(clientY < others[i].midY) return i;
+function _calcSlotInsertIdx(clientY, items) {
+  for(let i = 0; i < items.length; i++) {
+    if(clientY < items[i].midY) return i;
   }
-  return others.length;
+  return items.length;
 }
 
-function _showSlotLine(clientY, snap, insertIdx, dragId) {
+function _showSlotLine(slotEl, items, insertIdx) {
   const ind = _ensureSlotIndicator();
-  const others = snap.items.filter(it => it.id !== dragId);
+  if(items.length === 0) { ind.style.display = 'none'; return; }
   let lineY;
-  if(others.length === 0) {
-    ind.style.display = 'none'; return;
-  }
-  if(insertIdx < others.length) {
-    lineY = others[insertIdx].top - 1;
+  if(insertIdx < items.length) {
+    lineY = items[insertIdx].top - 1;
   } else {
-    lineY = others[others.length - 1].bottom + 1;
+    lineY = items[items.length - 1].bottom + 1;
   }
-  const slotRect = snap.slotEl.getBoundingClientRect();
+  const slotRect = slotEl.getBoundingClientRect();
   ind.style.left = (slotRect.left + 12) + 'px';
-  ind.style.right = 'auto';
   ind.style.width = (slotRect.width - 24) + 'px';
   ind.style.top = lineY + 'px';
   ind.style.display = '';
@@ -4556,12 +4551,8 @@ function _showSlotLine(clientY, snap, insertIdx, dragId) {
 
 function _hideSlotLine() {
   if(_slotIndicator) _slotIndicator.style.display = 'none';
-}
-
-function _resetSlotSnap() {
-  _slotSnap = null;
-  _slotSnapIdx = -1;
-  _hideSlotLine();
+  _slotLastIdx = -1;
+  _slotLastSlot = null;
 }
 
 function onSlotDragOver(event) {
@@ -4572,17 +4563,13 @@ function onSlotDragOver(event) {
   slot.classList.add('drag-over');
   if(!dragTodoId) return;
 
-  // Build snapshot once per slot (rebuild if slot changed)
-  if(!_slotSnap || _slotSnap.slotEl !== slot) {
-    _resetSlotSnap();
-    _slotSnap = _buildSlotSnapshot(slot);
-  }
-  if(!_slotSnap || _slotSnap.items.length === 0) return;
-
-  const idx = _calcSlotInsertIdx(event.clientY, _slotSnap, dragTodoId);
-  if(idx !== _slotSnapIdx) {
-    _slotSnapIdx = idx;
-    _showSlotLine(event.clientY, _slotSnap, idx, dragTodoId);
+  const items = _readSlotItems(slot, dragTodoId);
+  if(items.length === 0) return;
+  const idx = _calcSlotInsertIdx(event.clientY, items);
+  if(idx !== _slotLastIdx || slot !== _slotLastSlot) {
+    _slotLastIdx = idx;
+    _slotLastSlot = slot;
+    _showSlotLine(slot, items, idx);
   }
 }
 
@@ -4590,7 +4577,7 @@ function onSlotDragLeave(event) {
   const slot = event.target.closest('.time-slot');
   if(slot && !slot.contains(event.relatedTarget)) {
     slot.classList.remove('drag-over');
-    if(_slotSnap && _slotSnap.slotEl === slot) _resetSlotSnap();
+    _hideSlotLine();
   }
 }
 
@@ -4612,30 +4599,23 @@ function onSlotDrop(event, slotKey, dateStr) {
   if(!slots.afternoon) slots.afternoon = [];
   if(!slots.evening) slots.evening = [];
 
-  // Build ordered list excluding dragged item
   const oldList = (slots[slotKey] || []).filter(id => id !== todoId);
-  // Also remove from other slots
   ['morning','afternoon','evening'].forEach(k => {
     slots[k] = slots[k].filter(id => id !== todoId);
   });
 
-  // Compute insert position from snapshot or fallback
+  // Live-read position at drop time
   let insertIdx = oldList.length;
-  if(_slotSnap && _slotSnap.slotEl === slotEl) {
-    insertIdx = _calcSlotInsertIdx(event.clientY, _slotSnap, todoId);
-  } else if(slotEl) {
-    const items = [...slotEl.querySelectorAll('.ts-item')].filter(el => el.dataset.id !== todoId);
-    for(let i = 0; i < items.length; i++) {
-      const r = items[i].getBoundingClientRect();
-      if(event.clientY < r.top + r.height / 2) { insertIdx = i; break; }
-    }
+  if(slotEl) {
+    const items = _readSlotItems(slotEl, todoId);
+    insertIdx = _calcSlotInsertIdx(event.clientY, items);
   }
 
   if(insertIdx > oldList.length) insertIdx = oldList.length;
   oldList.splice(insertIdx, 0, todoId);
   slots[slotKey] = oldList;
 
-  _resetSlotSnap();
+  _hideSlotLine();
   setTimeSlots(dateStr, slots);
   renderDay();
   _dropLock = false;
@@ -4797,7 +4777,7 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
     document.querySelectorAll('.day-section.drop-highlight').forEach(el => el.classList.remove('drop-highlight'));
     document.querySelectorAll('.sort-indicator').forEach(el => el.remove());
     document.querySelectorAll('.todo-sort-zone.sort-drag-over').forEach(el => el.classList.remove('sort-drag-over'));
-    _resetSlotSnap();
+    _hideSlotLine();
   }
 
   function getDropTarget(x, y) {
@@ -4853,7 +4833,7 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
     moveGhost(t.clientX, t.clientY);
     autoScroll(t.clientY);
 
-    // Clear non-slot highlights (don't touch _slotSnap here!)
+    // Clear non-slot highlights only
     document.querySelectorAll('.day-section.drop-highlight').forEach(el => el.classList.remove('drop-highlight'));
     document.querySelectorAll('.sort-indicator').forEach(el => el.remove());
     document.querySelectorAll('.todo-sort-zone.sort-drag-over').forEach(el => el.classList.remove('sort-drag-over'));
@@ -4866,7 +4846,7 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
       return;
     }
 
-    // Check: time slot? — use snapshot-based overlay indicator
+    // Check: time slot? — live-read positions for overlay indicator
     const slot = under.closest('.time-slot');
     if (slot) {
       // Clear other slots' drag-over
@@ -4874,16 +4854,13 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
         if(el !== slot) el.classList.remove('drag-over');
       });
       slot.classList.add('drag-over');
-      // Build snapshot once per slot
-      if(!_slotSnap || _slotSnap.slotEl !== slot) {
-        _resetSlotSnap();
-        _slotSnap = _buildSlotSnapshot(slot);
-      }
-      if(_slotSnap && _slotSnap.items.length > 0) {
-        const idx = _calcSlotInsertIdx(t.clientY, _slotSnap, _tDragId);
-        if(idx !== _slotSnapIdx) {
-          _slotSnapIdx = idx;
-          _showSlotLine(t.clientY, _slotSnap, idx, _tDragId);
+      const items = _readSlotItems(slot, _tDragId);
+      if(items.length > 0) {
+        const idx = _calcSlotInsertIdx(t.clientY, items);
+        if(idx !== _slotLastIdx || slot !== _slotLastSlot) {
+          _slotLastIdx = idx;
+          _slotLastSlot = slot;
+          _showSlotLine(slot, items, idx);
         }
       }
       return;
@@ -4930,10 +4907,7 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
     const ct = e.changedTouches[0];
     const under = getDropTarget(ct.clientX, ct.clientY);
 
-    // IMPORTANT: Save snapshot BEFORE clearing (clearHighlights resets it)
-    const savedSnap = _slotSnap;
-
-    // Now clean up visual state
+    // Clean up visual state
     clearHighlights();
     removeGhost();
     document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
@@ -4963,18 +4937,16 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
             slots[k] = slots[k].filter(id => id !== todoId);
           });
 
-          // Use saved snapshot for position calc
+          // Live-read: temporarily hide dragged element so it doesn't affect layout
+          const dragEl = slotEl.querySelector(`.ts-item[data-id="${todoId}"]`);
+          if(dragEl) dragEl.style.display = 'none';
           let insertIdx = oldList.length;
-          if(savedSnap && savedSnap.slotEl === slotEl) {
-            insertIdx = _calcSlotInsertIdx(ct.clientY, savedSnap, todoId);
-          } else {
-            // Fallback: re-read DOM (less accurate but works)
-            const items = [...slotEl.querySelectorAll('.ts-item')].filter(el => el.dataset.id !== todoId);
-            for(let i = 0; i < items.length; i++) {
-              const r = items[i].getBoundingClientRect();
-              if(ct.clientY < r.top + r.height / 2) { insertIdx = i; break; }
-            }
+          const liveItems = [...slotEl.querySelectorAll('.ts-item')].filter(el => el.dataset.id !== todoId && el.style.display !== 'none');
+          for(let i = 0; i < liveItems.length; i++) {
+            const r = liveItems[i].getBoundingClientRect();
+            if(ct.clientY < r.top + r.height / 2) { insertIdx = i; break; }
           }
+          if(dragEl) dragEl.style.display = '';
 
           if(insertIdx > oldList.length) insertIdx = oldList.length;
           oldList.splice(insertIdx, 0, todoId);
