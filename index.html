@@ -4215,6 +4215,20 @@ function openDatePickerDay(todoId, event) {
 function assignDateDay(todoId, dateStr) {
   const r = findTodo(todoId);
   if(!r) return;
+
+  // Remove todo from old date's time slots (so it doesn't linger in the current day's slot view)
+  const oldDate = r.todo.date;
+  if(oldDate) {
+    const oldSlots = getTimeSlots(oldDate);
+    let slotDirty = false;
+    ['morning','afternoon','evening'].forEach(k => {
+      if(!oldSlots[k]) return;
+      const idx = oldSlots[k].indexOf(todoId);
+      if(idx !== -1) { oldSlots[k].splice(idx, 1); slotDirty = true; }
+    });
+    if(slotDirty) setTimeSlots(oldDate, oldSlots);
+  }
+
   r.todo.date = dateStr;
   if(dateStr) { r.todo.week = fmtDate(getMonday(dateToObj(dateStr))); }
   if(!dateStr) { r.todo.autoDate = false; }
@@ -4224,7 +4238,7 @@ function assignDateDay(todoId, dateStr) {
   if(dateStr) {
     const dt = dateToObj(dateStr);
     const wdNames = ['日','一','二','三','四','五','六'];
-    toast(`📅 已改到 ${dateStr} 周${wdNames[dt.getDay()]}`);
+    toast(`📅 已移到 ${dateStr} 周${wdNames[dt.getDay()]}`);
   } else {
     toast('📅 已清除日期');
   }
@@ -4233,6 +4247,20 @@ function assignDateDay(todoId, dateStr) {
 function assignDate(todoId, dateStr) {
   const r = findTodo(todoId);
   if(!r) return;
+
+  // Remove todo from old date's time slots
+  const oldDate = r.todo.date;
+  if(oldDate) {
+    const oldSlots = getTimeSlots(oldDate);
+    let slotDirty = false;
+    ['morning','afternoon','evening'].forEach(k => {
+      if(!oldSlots[k]) return;
+      const idx = oldSlots[k].indexOf(todoId);
+      if(idx !== -1) { oldSlots[k].splice(idx, 1); slotDirty = true; }
+    });
+    if(slotDirty) setTimeSlots(oldDate, oldSlots);
+  }
+
   r.todo.date = dateStr;
   if(dateStr) { r.todo.week = fmtDate(getMonday(dateToObj(dateStr))); }
   if(!dateStr) { r.todo.autoDate = false; }
