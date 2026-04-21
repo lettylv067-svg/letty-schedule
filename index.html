@@ -4628,6 +4628,283 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
   }
 }
 
+// ================================================================
+// TOUCH DRAG — long-press to drag on mobile (iOS/Android)
+// ================================================================
+(function initTouchDrag() {
+  let _tDragId = null;       // todoId being dragged
+  let _tGhost = null;        // floating ghost element
+  let _tTimer = null;        // long-press timer
+  let _tScrollRAF = null;    // auto-scroll frame
+  let _tStartX = 0, _tStartY = 0;
+  let _tActive = false;
+  let _tLastTarget = null;   // last element under finger for highlight cleanup
+  const LONG_PRESS = 350;    // ms
+  const T_SCROLL_EDGE = 50;  // px from viewport edge
+  const T_SCROLL_SPEED = 8;  // px per frame
+
+  // --- Helpers ---
+  function getTodoEl(el) {
+    return el.closest('.row.todo.draggable-todo') || el.closest('.ts-item[draggable]');
+  }
+
+  function getTodoId(el) {
+    const row = getTodoEl(el);
+    if (!row) return null;
+    // .row.todo has data-id; .ts-item also has data-id
+    if (row.dataset.id) return row.dataset.id;
+    // Fallback: parse from ondragstart
+    const attr = row.getAttribute('ondragstart');
+    if (attr) { const m = attr.match(/'([^']+)'/); if (m) return m[1]; }
+    return null;
+  }
+
+  function createGhost(el) {
+    const g = document.createElement('div');
+    g.className = 'touch-drag-ghost';
+    g.textContent = el.querySelector('.row-text, .ts-item-text')?.textContent?.slice(0, 30) || '拖拽中…';
+    g.style.cssText = 'position:fixed;z-index:10000;padding:8px 14px;background:rgba(0,122,255,0.92);color:#fff;border-radius:10px;font-size:13px;font-weight:600;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transform:translate(-50%,-120%);';
+    document.body.appendChild(g);
+    return g;
+  }
+
+  function moveGhost(x, y) {
+    if (_tGhost) { _tGhost.style.left = x + 'px'; _tGhost.style.top = y + 'px'; }
+  }
+
+  function removeGhost() {
+    if (_tGhost) { _tGhost.remove(); _tGhost = null; }
+  }
+
+  function autoScroll(clientY) {
+    cancelAnimationFrame(_tScrollRAF);
+    const h = window.innerHeight;
+    let delta = 0;
+    if (clientY < T_SCROLL_EDGE) {
+      delta = -T_SCROLL_SPEED * Math.max(0.3, 1 - clientY / T_SCROLL_EDGE);
+    } else if (clientY > h - T_SCROLL_EDGE) {
+      delta = T_SCROLL_SPEED * Math.max(0.3, 1 - (h - clientY) / T_SCROLL_EDGE);
+    }
+    if (delta !== 0 && _tActive) {
+      window.scrollBy(0, delta);
+      _tScrollRAF = requestAnimationFrame(() => autoScroll(clientY));
+    }
+  }
+
+  function clearHighlights() {
+    document.querySelectorAll('.time-slot.drag-over').forEach(el => el.classList.remove('drag-over'));
+    document.querySelectorAll('.day-section.drop-highlight').forEach(el => el.classList.remove('drop-highlight'));
+    document.querySelectorAll('.sort-indicator').forEach(el => el.remove());
+    document.querySelectorAll('.todo-sort-zone.sort-drag-over').forEach(el => el.classList.remove('sort-drag-over'));
+  }
+
+  function getDropTarget(x, y) {
+    // Hide ghost temporarily so elementFromPoint sees what's behind
+    if (_tGhost) _tGhost.style.display = 'none';
+    const el = document.elementFromPoint(x, y);
+    if (_tGhost) _tGhost.style.display = '';
+    return el;
+  }
+
+  // --- Event Handlers ---
+  document.addEventListener('touchstart', function(e) {
+    const el = getTodoEl(e.target);
+    if (!el) return;
+    const id = getTodoId(e.target);
+    if (!id) return;
+
+    const t = e.touches[0];
+    _tStartX = t.clientX;
+    _tStartY = t.clientY;
+    _tDragId = id;
+    _tActive = false;
+
+    _tTimer = setTimeout(() => {
+      _tActive = true;
+      // Haptic feedback if available
+      if (navigator.vibrate) navigator.vibrate(30);
+      el.classList.add('dragging');
+      _tGhost = createGhost(el);
+      moveGhost(_tStartX, _tStartY);
+      // Prevent text selection
+      document.body.style.userSelect = 'none';
+      document.body.style.webkitUserSelect = 'none';
+    }, LONG_PRESS);
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function(e) {
+    if (!_tDragId) return;
+
+    const t = e.touches[0];
+    // If haven't activated yet, check if finger moved too far (cancel long-press)
+    if (!_tActive) {
+      const dx = t.clientX - _tStartX, dy = t.clientY - _tStartY;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        clearTimeout(_tTimer);
+        _tDragId = null;
+      }
+      return;
+    }
+
+    e.preventDefault(); // Prevent page scroll while dragging
+
+    moveGhost(t.clientX, t.clientY);
+    autoScroll(t.clientY);
+
+    // Highlight drop targets
+    clearHighlights();
+    const under = getDropTarget(t.clientX, t.clientY);
+    if (!under) return;
+
+    // Check: time slot?
+    const slot = under.closest('.time-slot');
+    if (slot) { slot.classList.add('drag-over'); return; }
+
+    // Check: todo list drop zone?
+    const todoZone = under.closest('#todoListDropZone');
+    if (todoZone) { todoZone.classList.add('drop-highlight'); }
+
+    // Check: sort zone (show insert indicator)
+    const sortZone = under.closest('.todo-sort-zone');
+    if (sortZone) {
+      sortZone.classList.add('sort-drag-over');
+      const rows = [...sortZone.querySelectorAll('.row.todo:not(.dragging)')];
+      let insertBefore = null;
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        if (t.clientY < rect.top + rect.height / 2) { insertBefore = row; break; }
+      }
+      const indicator = document.createElement('div');
+      indicator.className = 'sort-indicator';
+      if (insertBefore) sortZone.insertBefore(indicator, insertBefore);
+      else sortZone.appendChild(indicator);
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchend', function(e) {
+    clearTimeout(_tTimer);
+    cancelAnimationFrame(_tScrollRAF);
+
+    if (!_tActive || !_tDragId) {
+      _tDragId = null;
+      _tActive = false;
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+      return;
+    }
+
+    const todoId = _tDragId;
+    const ct = e.changedTouches[0];
+    const under = getDropTarget(ct.clientX, ct.clientY);
+
+    clearHighlights();
+    removeGhost();
+    document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    document.body.style.userSelect = '';
+    document.body.style.webkitUserSelect = '';
+
+    _tDragId = null;
+    _tActive = false;
+
+    if (!under) return;
+
+    // Determine which drop target was hit
+    // 1) Time slot → add to slot
+    const slotEl = under.closest('.time-slot');
+    if (slotEl) {
+      const onDrop = slotEl.getAttribute('ondrop');
+      if (onDrop) {
+        // Parse slot key and date from ondrop="onSlotDrop(event,'morning','04/21')"
+        const m = onDrop.match(/onSlotDrop\(event,'(\w+)','([^']+)'\)/);
+        if (m) {
+          const [, slotKey, dateStr] = m;
+          // Reuse slot drop logic
+          const slots = getTimeSlots(dateStr);
+          if(!slots.morning) slots.morning = [];
+          if(!slots.afternoon) slots.afternoon = [];
+          if(!slots.evening) slots.evening = [];
+          ['morning','afternoon','evening'].forEach(k => {
+            slots[k] = slots[k].filter(id => id !== todoId);
+          });
+          slots[slotKey].push(todoId);
+          setTimeSlots(dateStr, slots);
+          renderDay();
+          const slotNames = { morning: '上午', afternoon: '下午', evening: '晚上' };
+          toast(`⏰ 已安排到${slotNames[slotKey]}`);
+          return;
+        }
+      }
+    }
+
+    // 2) Sort zone → reorder
+    const sortZone = under.closest('.todo-sort-zone');
+    if (sortZone) {
+      const modId = sortZone.dataset.modId;
+      if (modId) {
+        const draggedTodoResult = findTodo(todoId);
+        if (draggedTodoResult && draggedTodoResult.mod.id === modId) {
+          const rows = [...sortZone.querySelectorAll('.row.todo:not(.dragging)')];
+          const orderedIds = rows.map(r => r.dataset.id);
+          let insertIdx = orderedIds.length;
+          for (let i = 0; i < rows.length; i++) {
+            const rect = rows[i].getBoundingClientRect();
+            if (ct.clientY < rect.top + rect.height / 2) { insertIdx = i; break; }
+          }
+          const finalOrder = [...orderedIds];
+          const existIdx = finalOrder.indexOf(todoId);
+          if (existIdx !== -1) finalOrder.splice(existIdx, 1);
+          if (insertIdx > finalOrder.length) insertIdx = finalOrder.length;
+          finalOrder.splice(insertIdx, 0, todoId);
+          const mod = draggedTodoResult.mod;
+          finalOrder.forEach((id, idx) => {
+            const t = mod.todos.find(x => x.id === id);
+            if (t) t.sortIndex = idx;
+          });
+          saveState();
+          if (currentView === 'week') renderWeek(); else renderDay();
+          toast('↕️ 已调整顺序');
+          return;
+        }
+      }
+    }
+
+    // 3) Todo list drop zone → remove from slot
+    const todoZone = under.closest('#todoListDropZone');
+    if (todoZone) {
+      // Get current day view date string
+      const viewD = new Date(NOW); viewD.setDate(viewD.getDate() + dayOffset);
+      const ds = fmtDate(viewD);
+      const slots = getTimeSlots(ds);
+      let removed = false;
+      ['morning','afternoon','evening'].forEach(k => {
+        if (slots[k] && slots[k].includes(todoId)) {
+          slots[k] = slots[k].filter(id => id !== todoId);
+          removed = true;
+        }
+      });
+      if (removed) {
+        setTimeSlots(ds, slots);
+        renderDay();
+        toast('↩️ 已移回待办区');
+      }
+      return;
+    }
+  }, { passive: true });
+
+  // Cancel on context menu (prevent ghost stuck)
+  document.addEventListener('touchcancel', function() {
+    clearTimeout(_tTimer);
+    cancelAnimationFrame(_tScrollRAF);
+    clearHighlights();
+    removeGhost();
+    document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    document.body.style.userSelect = '';
+    document.body.style.webkitUserSelect = '';
+    _tDragId = null;
+    _tActive = false;
+  });
+})();
+
 // Add a new todo directly into a time slot
 function addTodoInSlot(slotKey, dateStr) {
   // Use the module selected in day view's add bar, or fallback to first module
@@ -4830,6 +5107,73 @@ async function bootAppData() {
   // Load version history in background
   loadVersions().then(() => console.log(`📸 ${_versions.length} version(s) loaded`));
 }
+
+// ================================================================
+// PWA INSTALL PROMPT — guide user to "Add to Home Screen"
+// ================================================================
+(function initPWAInstallGuide() {
+  // Don't show if already running as standalone PWA
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+  if (isStandalone) return;
+
+  // Don't show if user dismissed before (remember for 7 days)
+  const dismissKey = 'pwa_install_dismissed';
+  const dismissed = localStorage.getItem(dismissKey);
+  if (dismissed && Date.now() - parseInt(dismissed) < 7 * 86400000) return;
+
+  // Android/Chrome: intercept beforeinstallprompt
+  let _deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _deferredPrompt = e;
+    showInstallBanner('android');
+  });
+
+  // iOS Safari: show guide after a short delay
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if (isIOS) {
+    setTimeout(() => showInstallBanner('ios'), 2000);
+  }
+
+  function showInstallBanner(platform) {
+    if (document.getElementById('pwaInstallBanner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'pwaInstallBanner';
+    banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:rgba(255,255,255,0.95);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-top:0.5px solid rgba(0,0,0,0.1);padding:14px 20px;display:flex;align-items:center;gap:12px;box-shadow:0 -2px 16px rgba(0,0,0,0.08);font-size:13px;color:#333;animation:fadeIn .3s ease;';
+
+    if (platform === 'ios') {
+      banner.innerHTML = `
+        <span style="font-size:28px">📲</span>
+        <div style="flex:1;line-height:1.5">
+          <strong>添加到主屏幕</strong><br>
+          <span style="color:#666;font-size:12px">点击 Safari 底部 <span style="font-size:16px;vertical-align:middle">⬆</span> 分享按钮 → 选择「添加到主屏幕」，下次可像 App 一样打开</span>
+        </div>
+        <button onclick="this.parentElement.remove();localStorage.setItem('${dismissKey}',Date.now())" style="background:none;border:none;font-size:18px;color:#999;cursor:pointer;padding:4px 8px">✕</button>`;
+    } else {
+      banner.innerHTML = `
+        <span style="font-size:28px">📲</span>
+        <div style="flex:1;line-height:1.5">
+          <strong>安装为 App</strong><br>
+          <span style="color:#666;font-size:12px">安装后可从桌面直接打开，像原生 App 一样使用</span>
+        </div>
+        <button id="pwaInstallBtn" style="background:var(--primary,#007aff);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">安装</button>
+        <button onclick="this.parentElement.remove();localStorage.setItem('${dismissKey}',Date.now())" style="background:none;border:none;font-size:18px;color:#999;cursor:pointer;padding:4px 8px">✕</button>`;
+      setTimeout(() => {
+        const btn = document.getElementById('pwaInstallBtn');
+        if (btn) btn.addEventListener('click', async () => {
+          if (_deferredPrompt) {
+            _deferredPrompt.prompt();
+            const { outcome } = await _deferredPrompt.userChoice;
+            if (outcome === 'accepted') banner.remove();
+            _deferredPrompt = null;
+          }
+        });
+      }, 0);
+    }
+    document.body.appendChild(banner);
+  }
+})();
 
 // --- Check saved session on page load ---
 (function authBoot() {
