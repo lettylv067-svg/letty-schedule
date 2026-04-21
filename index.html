@@ -3905,10 +3905,18 @@ function switchTodoModule(todoId, tagEl, event) {
 
   const menu = document.createElement('div');
   menu.id = 'modSwitchMenu';
-  menu.style.cssText = 'position:fixed;z-index:9999;background:#fff;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px 0;min-width:140px;';
+  menu.style.cssText = 'position:fixed;z-index:9999;background:#fff;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px 0;min-width:140px;max-height:260px;overflow-y:auto;';
   const rect = tagEl.getBoundingClientRect();
-  menu.style.left = rect.left + 'px';
-  menu.style.top = (rect.bottom + 4) + 'px';
+  const spaceBelow = window.innerHeight - rect.bottom - 8;
+  const spaceAbove = rect.top - 8;
+  // Pop upward if not enough space below and more space above
+  if(spaceBelow < 200 && spaceAbove > spaceBelow) {
+    menu.style.left = rect.left + 'px';
+    menu.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+  } else {
+    menu.style.left = rect.left + 'px';
+    menu.style.top = (rect.bottom + 4) + 'px';
+  }
 
   MODULES.forEach(mod => {
     const item = document.createElement('div');
