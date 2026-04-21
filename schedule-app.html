@@ -746,7 +746,7 @@
     background: rgba(0,0,0,0.02); border: 0.5px solid var(--border);
     border-radius: var(--r-sm); display: flex; align-items: center; gap: 8px;
     transition: all .2s var(--trans-smooth); font-size: 13px;
-    cursor: grab;
+    cursor: grab; touch-action: none; -webkit-touch-callout: none;
   }
   .ts-item:active { cursor: grabbing; }
   .ts-item.dragging { opacity: 0.15; pointer-events: none; }
@@ -800,7 +800,7 @@
   }
   .ts-add-btn:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
 
-  .row.todo.draggable-todo { cursor: grab; }
+  .row.todo.draggable-todo { cursor: grab; touch-action: none; -webkit-touch-callout: none; }
   .row.todo.draggable-todo:active { cursor: grabbing; }
   .row.todo.dragging { opacity: 0.15; pointer-events: none; }
 
@@ -4820,6 +4820,9 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
     const t = e.touches[0];
     // If haven't activated yet, check if finger moved too far (cancel long-press)
     if (!_tActive) {
+      // CRITICAL: still preventDefault during long-press wait to stop iOS Safari
+      // from entering scroll mode (which would steal subsequent touchmove events)
+      e.preventDefault();
       const dx = t.clientX - _tStartX, dy = t.clientY - _tStartY;
       if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
         clearTimeout(_tTimer);
