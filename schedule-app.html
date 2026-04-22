@@ -1525,7 +1525,22 @@
 // ================================================================
 // DATE UTILS
 // ================================================================
-const NOW = new Date();
+// NOW must be `let` so it can be refreshed when the user returns to the app
+// after midnight (PWA stays alive across days). All code that uses NOW will
+// automatically get the current date after a refresh.
+let NOW = new Date();
+let _lastNowDate = NOW.toDateString();
+
+function refreshNow() {
+  NOW = new Date();
+  const curDate = NOW.toDateString();
+  if (curDate !== _lastNowDate) {
+    _lastNowDate = curDate;
+    return true; // date changed — caller should re-render
+  }
+  return false;
+}
+
 let weekOffset = 0;
 let dayOffset = 0;
 
@@ -1579,7 +1594,7 @@ function getWeekLabelForMonday(monDate) {
   return `${prefix} · ${fmtDate(monDate)} ~ ${fmtDate(sun)}`;
 }
 
-function getTodayStr() { return fmtDate(NOW); }
+function getTodayStr() { refreshNow(); return fmtDate(NOW); }
 
 function dateToObj(dateStr) {
   const m = parseInt(dateStr.split('/')[0]) - 1;
@@ -5323,6 +5338,15 @@ async function bootAppData() {
 // ================================================================
 document.addEventListener('visibilitychange', async () => {
   if(document.visibilityState === 'visible') {
+    // ---- Date refresh: detect if day changed while app was in background ----
+    const dateChanged = refreshNow();
+    if(dateChanged) {
+      console.log('📅 Date changed while app was in background — refreshing view');
+      document.getElementById('weekLabel').textContent = getWeekLabel();
+      if(currentView === 'week') renderWeek(); else renderDay();
+      toast('📅 日期已更新');
+    }
+
     // Tab came back to focus — check cloud for newer data from other windows
     if(!_cloudAvailable || !_supabaseClient || !_cloudReady) return;
     const result = await pullFromCloud({ silent: true });
