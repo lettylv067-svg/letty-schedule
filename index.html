@@ -3875,11 +3875,13 @@ function renderNotesContent() {
     return;
   }
 
-  // Sort by week desc, then newest first within each week
+  // Sort by week desc; within same week, newest (later in array) first
+  // Info items are appended via push(), so higher original index = newer
+  entries.forEach((e, i) => e._idx = i);
   entries.sort((a, b) => {
     const wa = a.info.week || '0000-00-00', wb = b.info.week || '0000-00-00';
     if (wa !== wb) return wb.localeCompare(wa);
-    return 0; // preserve array order within same week
+    return b._idx - a._idx; // newer (higher index) first
   });
 
   // Group by week, and within each week group by module if "all"
