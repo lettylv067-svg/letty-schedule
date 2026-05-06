@@ -6335,16 +6335,43 @@ document.addEventListener('DOMContentLoaded', () => {
   initAiPasteHandler();
 });
 
-// --- PWA: Register Service Worker ---
+// --- PWA: Register Service Worker (自动更新) ---
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then((reg) => {
       console.log('[PWA] SW registered, scope:', reg.scope);
-      // Check for updates periodically
-      setInterval(() => reg.update(), 60 * 60 * 1000); // hourly
+
+      // 检测到新 SW 时自动刷新页面
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+              console.log('[PWA] New version activated, reloading...');
+              window.location.reload();
+            }
+          });
+        }
+      });
+
+      // 每次页面可见时检查更新（而非等1小时）
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update();
+      });
+      // 也保留定时检查
+      setInterval(() => reg.update(), 30 * 60 * 1000); // 30分钟
     }).catch((err) => {
       console.warn('[PWA] SW registration failed:', err);
     });
+  });
+
+  // 当 SW 控制权变化时刷新（处理首次接管场景）
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
   });
 }
 
