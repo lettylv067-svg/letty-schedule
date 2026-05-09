@@ -2226,6 +2226,8 @@ let _localUpdatedAt = null;    // ISO timestamp of last known state — used for
 let _cloudSyncTimer = null;    // Debounce timer for cloud push
 let _isSyncing = false;        // Prevent concurrent sync operations
 let _pullInProgress = false;   // Prevent concurrent pull operations
+let _deletedIds = new Set();   // Track user-initiated deletions this session (cleared after successful push)
+let _lastKnownCloudCount = 0;  // Total info+todo count from last known cloud state
 
 // --- Sync status UI ---
 let _lastSyncStatus = 'init';
@@ -2291,6 +2293,10 @@ async function pushToCloud() {
   _isSyncing = true;
   try {
     showSyncStatus('saving');
+
+    // ---- MERGE-BEFORE-PUSH: prevent accidental data loss ----
+    await _mergeBeforePush();
+
     const now = new Date().toISOString();
     _localUpdatedAt = now;
     const payload = {
@@ -2304,6 +2310,9 @@ async function pushToCloud() {
       .upsert(payload, { onConflict: 'id' });
     if(error) throw error;
     _pendingSync = false;
+    _deletedIds.clear(); // Deletions synced — reset tracking
+    // Update cloud item count for beforeunload safety check
+    _lastKnownCloudCount = _countItems(MODULES);
     // Update localStorage cache
     localStorage.setItem(getStoreKey(), JSON.stringify({
       modules: MODULES, updated_at: now
@@ -2324,6 +2333,68 @@ async function pushToCloud() {
     showSyncStatus('error');
   } finally {
     _isSyncing = false;
+  }
+}
+
+// Count total info+todo items across all modules
+function _countItems(modules) {
+  let count = 0;
+  modules.forEach(m => {
+    count += (m.todos || []).length + (m.infos || []).length;
+  });
+  return count;
+}
+
+// Merge cloud data into local MODULES before pushing — ensures no accidental loss
+async function _mergeBeforePush() {
+  try {
+    const { data, error } = await _supabaseClient
+      .from('schedule_data')
+      .select('modules')
+      .eq('id', getDataRowId())
+      .single();
+    if(error || !data || !data.modules) return; // No cloud data yet — skip merge
+
+    const cloudModules = data.modules;
+    // Build set of all local IDs (info + todo)
+    const localInfoIds = new Set();
+    const localTodoIds = new Set();
+    MODULES.forEach(m => {
+      (m.infos || []).forEach(i => localInfoIds.add(i.id));
+      (m.todos || []).forEach(t => localTodoIds.add(t.id));
+    });
+
+    let recovered = 0;
+    cloudModules.forEach(cloudMod => {
+      // Find matching local module by name
+      const localMod = MODULES.find(m => m.name === cloudMod.name);
+      if(!localMod) return;
+
+      // Recover missing infos (not in local AND not deliberately deleted)
+      (cloudMod.infos || []).forEach(info => {
+        if(!localInfoIds.has(info.id) && !_deletedIds.has(info.id)) {
+          localMod.infos.push(info);
+          localInfoIds.add(info.id);
+          recovered++;
+        }
+      });
+
+      // Recover missing todos
+      (cloudMod.todos || []).forEach(todo => {
+        if(!localTodoIds.has(todo.id) && !_deletedIds.has(todo.id)) {
+          localMod.todos.push(todo);
+          localTodoIds.add(todo.id);
+          recovered++;
+        }
+      });
+    });
+
+    if(recovered > 0) {
+      console.log(`🛡️ Merge-before-push: recovered ${recovered} item(s) from cloud`);
+    }
+  } catch(e) {
+    // Merge failed — proceed with push anyway (best-effort protection)
+    console.warn('Merge-before-push failed (non-fatal):', e);
   }
 }
 
@@ -2366,6 +2437,7 @@ async function pullFromCloud(opts = {}) {
       console.log('☁️ INIT: adopting cloud data');
       MODULES = data.modules;
       _localUpdatedAt = data.updated_at;
+      _lastKnownCloudCount = _countItems(MODULES);
       localStorage.setItem(getStoreKey(), JSON.stringify({
         modules: MODULES, updated_at: data.updated_at
       }));
@@ -2380,6 +2452,7 @@ async function pullFromCloud(opts = {}) {
       console.log(`☁️ Cloud is newer, adopting cloud data`);
       MODULES = data.modules;
       _localUpdatedAt = data.updated_at;
+      _lastKnownCloudCount = _countItems(MODULES);
       localStorage.setItem(getStoreKey(), JSON.stringify({
         modules: MODULES, updated_at: data.updated_at
       }));
@@ -4048,6 +4121,7 @@ async function delNoteInNotesView(id) {
   try {
     const ok = await showConfirm('确定要删除这条笔记吗？');
     if (!ok) return;
+    _deletedIds.add(id);
     MODULES.forEach(m => { m.infos = m.infos.filter(i => i.id !== id); });
     saveState();
     renderNotes(); // refresh sidebar counts too
@@ -4170,6 +4244,7 @@ async function delInfoInDetail(id) {
   try {
     const ok = await showConfirm('确定要删除这条信息吗？');
     if(!ok) return;
+    _deletedIds.add(id);
     MODULES.forEach(m => { m.infos = m.infos.filter(i=>i.id!==id); });
     saveState();
     const mod = findMod(infoDetailModId);
@@ -4479,6 +4554,7 @@ async function delTodo(id) {
   try {
     const ok = await showConfirm('确定要删除这条待办吗？');
     if(!ok) return;
+    _deletedIds.add(id);
     MODULES.forEach(m => { m.todos = m.todos.filter(t=>t.id!==id); });
     saveState(); renderWeek();
     if(currentView==='day') renderDay();
@@ -4522,6 +4598,7 @@ async function delInfo(id) {
   try {
     const ok = await showConfirm('确定要删除这条信息吗？');
     if(!ok) return;
+    _deletedIds.add(id);
     MODULES.forEach(m => { m.infos = m.infos.filter(i=>i.id!==id); });
     saveState(); renderWeek();
     toast('🗑️ 已删除');
@@ -5147,6 +5224,7 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
   try {
     const ok = await showConfirm('确定要删除这条待办吗？');
     if(!ok) return;
+    _deletedIds.add(todoId);
     // Remove from slot
     const slots = getTimeSlots(dateStr);
     if(slots[slotKey]) {
@@ -5838,6 +5916,13 @@ window.addEventListener('offline', () => {
 // ================================================================
 window.addEventListener('beforeunload', () => {
   if(!_cloudAvailable || !_userHasEdited) return;
+  // Safety check: don't push if local item count is significantly less than last known cloud count
+  // This prevents corrupted/incomplete memory state from overwriting good cloud data
+  const localCount = _countItems(MODULES);
+  if(_lastKnownCloudCount > 0 && localCount < _lastKnownCloudCount - 3) {
+    console.warn(`🛡️ beforeunload BLOCKED: local(${localCount}) << cloud(${_lastKnownCloudCount}). Skipping keepalive push.`);
+    return;
+  }
   // Use fetch with keepalive for reliable delivery during page close
   const payload = JSON.stringify({
     id: getDataRowId(),
