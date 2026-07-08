@@ -462,6 +462,42 @@
   .info-wk-body .info-row .i-actions { display:flex; gap:4px; opacity:0; transition:opacity .15s; flex-shrink:0; }
   .info-wk-body .info-row:hover .i-actions { opacity:1; }
 
+  /* ========== NOTE IMAGES ========== */
+  .note-content-wrap { flex: 1; min-width: 0; }
+  .note-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .note-img-thumb {
+    position: relative; cursor: pointer; border-radius: 8px; overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1); transition: transform .15s, box-shadow .15s;
+  }
+  .note-img-thumb:hover { transform: scale(1.03); box-shadow: 0 3px 12px rgba(0,0,0,0.15); }
+  .note-img-thumb img { display: block; max-height: 120px; max-width: 180px; object-fit: cover; border-radius: 8px; }
+  .note-img-del {
+    position: absolute; top: 4px; right: 4px; width: 20px; height: 20px;
+    border-radius: 50%; background: rgba(255,59,48,0.9); color: #fff;
+    border: none; font-size: 11px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; opacity: 0; transition: opacity .15s;
+    line-height: 1;
+  }
+  .note-img-thumb:hover .note-img-del { opacity: 1; }
+  /* Lightbox */
+  .note-img-lightbox {
+    position: fixed; inset: 0; z-index: 99999; background: rgba(0,0,0,0.85);
+    display: flex; align-items: center; justify-content: center;
+    animation: lbFadeIn .2s ease;
+  }
+  .note-img-lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  .note-img-lightbox .lb-close {
+    position: absolute; top: 20px; right: 24px; width: 36px; height: 36px;
+    background: rgba(255,255,255,0.15); border-radius: 50%; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; cursor: pointer; transition: background .2s;
+  }
+  .note-img-lightbox .lb-close:hover { background: rgba(255,255,255,0.3); }
+  @keyframes lbFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  /* Week view info row needs flex wrap for images */
+  .row.info .row-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .row.info .row-body .note-images { margin-top: 6px; }
+
   .info-empty-page { text-align:center; padding:60px; color: var(--text-sec); }
   .info-empty-page .big-icon { font-size: 48px; margin-bottom: 12px; }
 
@@ -2226,6 +2262,8 @@ let _localUpdatedAt = null;    // ISO timestamp of last known state — used for
 let _cloudSyncTimer = null;    // Debounce timer for cloud push
 let _isSyncing = false;        // Prevent concurrent sync operations
 let _pullInProgress = false;   // Prevent concurrent pull operations
+let _deletedIds = new Set();   // Track user-initiated deletions this session (cleared after successful push)
+let _lastKnownCloudCount = 0;  // Total info+todo count from last known cloud state
 
 // --- Sync status UI ---
 let _lastSyncStatus = 'init';
@@ -2291,6 +2329,10 @@ async function pushToCloud() {
   _isSyncing = true;
   try {
     showSyncStatus('saving');
+
+    // ---- MERGE-BEFORE-PUSH: prevent accidental data loss ----
+    await _mergeBeforePush();
+
     const now = new Date().toISOString();
     _localUpdatedAt = now;
     const payload = {
@@ -2304,6 +2346,9 @@ async function pushToCloud() {
       .upsert(payload, { onConflict: 'id' });
     if(error) throw error;
     _pendingSync = false;
+    _deletedIds.clear(); // Deletions synced — reset tracking
+    // Update cloud item count for beforeunload safety check
+    _lastKnownCloudCount = _countItems(MODULES);
     // Update localStorage cache
     localStorage.setItem(getStoreKey(), JSON.stringify({
       modules: MODULES, updated_at: now
@@ -2324,6 +2369,68 @@ async function pushToCloud() {
     showSyncStatus('error');
   } finally {
     _isSyncing = false;
+  }
+}
+
+// Count total info+todo items across all modules
+function _countItems(modules) {
+  let count = 0;
+  modules.forEach(m => {
+    count += (m.todos || []).length + (m.infos || []).length;
+  });
+  return count;
+}
+
+// Merge cloud data into local MODULES before pushing — ensures no accidental loss
+async function _mergeBeforePush() {
+  try {
+    const { data, error } = await _supabaseClient
+      .from('schedule_data')
+      .select('modules')
+      .eq('id', getDataRowId())
+      .single();
+    if(error || !data || !data.modules) return; // No cloud data yet — skip merge
+
+    const cloudModules = data.modules;
+    // Build set of all local IDs (info + todo)
+    const localInfoIds = new Set();
+    const localTodoIds = new Set();
+    MODULES.forEach(m => {
+      (m.infos || []).forEach(i => localInfoIds.add(i.id));
+      (m.todos || []).forEach(t => localTodoIds.add(t.id));
+    });
+
+    let recovered = 0;
+    cloudModules.forEach(cloudMod => {
+      // Find matching local module by name
+      const localMod = MODULES.find(m => m.name === cloudMod.name);
+      if(!localMod) return;
+
+      // Recover missing infos (not in local AND not deliberately deleted)
+      (cloudMod.infos || []).forEach(info => {
+        if(!localInfoIds.has(info.id) && !_deletedIds.has(info.id)) {
+          localMod.infos.push(info);
+          localInfoIds.add(info.id);
+          recovered++;
+        }
+      });
+
+      // Recover missing todos
+      (cloudMod.todos || []).forEach(todo => {
+        if(!localTodoIds.has(todo.id) && !_deletedIds.has(todo.id)) {
+          localMod.todos.push(todo);
+          localTodoIds.add(todo.id);
+          recovered++;
+        }
+      });
+    });
+
+    if(recovered > 0) {
+      console.log(`🛡️ Merge-before-push: recovered ${recovered} item(s) from cloud`);
+    }
+  } catch(e) {
+    // Merge failed — proceed with push anyway (best-effort protection)
+    console.warn('Merge-before-push failed (non-fatal):', e);
   }
 }
 
@@ -2366,6 +2473,7 @@ async function pullFromCloud(opts = {}) {
       console.log('☁️ INIT: adopting cloud data');
       MODULES = data.modules;
       _localUpdatedAt = data.updated_at;
+      _lastKnownCloudCount = _countItems(MODULES);
       localStorage.setItem(getStoreKey(), JSON.stringify({
         modules: MODULES, updated_at: data.updated_at
       }));
@@ -2380,6 +2488,7 @@ async function pullFromCloud(opts = {}) {
       console.log(`☁️ Cloud is newer, adopting cloud data`);
       MODULES = data.modules;
       _localUpdatedAt = data.updated_at;
+      _lastKnownCloudCount = _countItems(MODULES);
       localStorage.setItem(getStoreKey(), JSON.stringify({
         modules: MODULES, updated_at: data.updated_at
       }));
@@ -3602,6 +3711,7 @@ function infoRowHTML(i) {
       <div class="info-dot"></div>
       <div class="row-body">
         <textarea class="info-note-area" rows="1" onblur="editInfoText('${i.id}',this.value)" oninput="autoResizeTextarea(this)" placeholder="写点什么…">${esc(i.text)}</textarea>
+        ${noteImagesHTML(i)}
       </div>
       <div class="row-actions">
         <button class="act-btn ${i.highlighted?'hl-on':''}" onclick="hlInfo('${i.id}')" title="高亮">💡</button>
@@ -4006,7 +4116,10 @@ function renderNotesContent() {
 function notesInfoRowHTML(info, modId) {
   let h = `<div class="info-row ${info.highlighted ? 'highlighted' : ''}" data-id="${info.id}">`;
   h += `<div class="dot"></div>`;
+  h += `<div class="note-content-wrap">`;
   h += `<textarea class="i-text i-text-area" rows="1" onblur="editNoteInNotesView('${info.id}',this.value)" oninput="autoResizeTextarea(this)" placeholder="写点什么…">${esc(info.text)}</textarea>`;
+  h += noteImagesHTML(info);
+  h += `</div>`;
   h += `<div class="i-actions">`;
   h += `<button class="act-btn ${info.highlighted ? 'hl-on' : ''}" onclick="hlNoteInNotesView('${info.id}')" title="高亮">💡</button>`;
   h += `<button class="act-btn del" onclick="delNoteInNotesView('${info.id}')" title="删除">✕</button>`;
@@ -4048,6 +4161,7 @@ async function delNoteInNotesView(id) {
   try {
     const ok = await showConfirm('确定要删除这条笔记吗？');
     if (!ok) return;
+    _deletedIds.add(id);
     MODULES.forEach(m => { m.infos = m.infos.filter(i => i.id !== id); });
     saveState();
     renderNotes(); // refresh sidebar counts too
@@ -4132,7 +4246,10 @@ function renderInfoDetailPage(mod) {
     grp.items.forEach(i => {
       h += `<div class="info-row ${i.highlighted?'highlighted':''}" data-id="${i.id}">`;
       h += `<div class="dot"></div>`;
+      h += `<div class="note-content-wrap">`;
       h += `<textarea class="i-text i-text-area" rows="1" onblur="editInfoInDetail('${i.id}',this.value)" oninput="autoResizeTextarea(this)" placeholder="写点什么…">${esc(i.text)}</textarea>`;
+      h += noteImagesHTML(i);
+      h += `</div>`;
       h += `<div class="i-actions">`;
       h += `<button class="act-btn ${i.highlighted?'hl-on':''}" onclick="hlInfoInDetail('${i.id}')" title="高亮">💡</button>`;
       h += `<button class="act-btn del" onclick="delInfoInDetail('${i.id}')" title="删除">✕</button>`;
@@ -4170,6 +4287,7 @@ async function delInfoInDetail(id) {
   try {
     const ok = await showConfirm('确定要删除这条信息吗？');
     if(!ok) return;
+    _deletedIds.add(id);
     MODULES.forEach(m => { m.infos = m.infos.filter(i=>i.id!==id); });
     saveState();
     const mod = findMod(infoDetailModId);
@@ -4388,8 +4506,14 @@ function _doEditTodoText(id, text) {
   const trimmed = text.trim();
   r.todo.text = trimmed;
 
-  tryAutoDetectDate(r.todo);
+  const result = tryAutoDetectDate(r.todo);
   saveState();
+  // result === true: 日期变化，tryAutoDetectDate 内部已安排渲染
+  // result === 'slot': 日期没变但 slot 分配了，需要刷新视图
+  // result === false: 无变化，也刷新以更新文本显示
+  if(result !== true) {
+    setTimeout(()=>{ renderWeek(); if(currentView==='day') renderDay(); }, 50);
+  }
 }
 
 // Centralized auto-detect date logic — used by editTodoText, oninput, and addTodo
@@ -4419,16 +4543,18 @@ function tryAutoDetectDate(todo) {
   }
   // 即使日期没变，也尝试识别时间段（比如日期已正确但还没分配slot）
   if(todo.date && todo.id) {
-    tryAutoAssignSlot(todo.id, todo.text, todo.date);
+    const slotAssigned = tryAutoAssignSlot(todo.id, todo.text, todo.date);
+    if(slotAssigned) return 'slot'; // 标记有 slot 变化但日期没变
   }
   return false;
 }
 
 // 自动将待办分配到时间段 slot（如果文本包含时间信息且尚未分配）
+// 返回 true 表示发生了新的分配，false 表示无变化
 function tryAutoAssignSlot(todoId, text, dateStr) {
-  if(!todoId || !text || !dateStr) return;
+  if(!todoId || !text || !dateStr) return false;
   const slotKey = parseTimeSlotFromText(text);
-  if(!slotKey) return;
+  if(!slotKey) return false;
 
   // 检查是否已经在某个 slot 中
   const slots = getTimeSlots(dateStr);
@@ -4437,13 +4563,14 @@ function tryAutoAssignSlot(todoId, text, dateStr) {
   if(!slots.evening) slots.evening = [];
 
   const alreadyAssigned = slots.morning.includes(todoId) || slots.afternoon.includes(todoId) || slots.evening.includes(todoId);
-  if(alreadyAssigned) return; // 已分配过则不重复处理
+  if(alreadyAssigned) return false; // 已分配过则不重复处理
 
   slots[slotKey].push(todoId);
   setTimeSlots(dateStr, slots);
 
   const slotNames = { morning: '上午', afternoon: '下午', evening: '晚上' };
   toast(`⏰ 自动安排到${slotNames[slotKey]}`);
+  return true;
 }
 
 function addTodo(modId) {
@@ -4470,6 +4597,7 @@ async function delTodo(id) {
   try {
     const ok = await showConfirm('确定要删除这条待办吗？');
     if(!ok) return;
+    _deletedIds.add(id);
     MODULES.forEach(m => { m.todos = m.todos.filter(t=>t.id!==id); });
     saveState(); renderWeek();
     if(currentView==='day') renderDay();
@@ -4513,6 +4641,7 @@ async function delInfo(id) {
   try {
     const ok = await showConfirm('确定要删除这条信息吗？');
     if(!ok) return;
+    _deletedIds.add(id);
     MODULES.forEach(m => { m.infos = m.infos.filter(i=>i.id!==id); });
     saveState(); renderWeek();
     toast('🗑️ 已删除');
@@ -4520,6 +4649,150 @@ async function delInfo(id) {
     _delInfoLock = false;
   }
 }
+
+// ================================================================
+// NOTE IMAGE PASTE — compress & store as base64 in info.images[]
+// ================================================================
+
+// Compress image via canvas: max 1600px long side, quality 0.85
+function compressNoteImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1600;
+      let w = img.width, h = img.height;
+      if(w > MAX || h > MAX) {
+        if(w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// Handle paste on info textarea — delegate from document
+function initNoteImagePaste() {
+  document.addEventListener('paste', async (e) => {
+    const target = e.target;
+    // Only handle paste on info textareas
+    if(!target.matches('.info-note-area, .i-text-area, .i-text')) return;
+
+    const items = e.clipboardData?.items;
+    if(!items) return;
+
+    const imageFiles = [];
+    for(const item of items) {
+      if(item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if(file) imageFiles.push(file);
+      }
+    }
+    if(!imageFiles.length) return; // No image — let normal paste proceed
+
+    e.preventDefault(); // Prevent pasting image data as text
+
+    // Find the info ID from the closest data-id ancestor
+    const row = target.closest('[data-id]');
+    if(!row) return;
+    const infoId = row.dataset.id;
+    const r = findInfo(infoId);
+    if(!r) return;
+
+    // Initialize images array if needed
+    if(!r.info.images) r.info.images = [];
+
+    // Limit: max 5 images per note
+    const remaining = 5 - r.info.images.length;
+    if(remaining <= 0) {
+      toast('⚠️ 每条笔记最多 5 张图片');
+      return;
+    }
+
+    const filesToProcess = imageFiles.slice(0, remaining);
+    toast(`📷 正在处理 ${filesToProcess.length} 张图片…`);
+
+    for(const file of filesToProcess) {
+      try {
+        const dataUrl = await compressNoteImage(file);
+        r.info.images.push(dataUrl);
+      } catch(err) {
+        console.error('图片压缩失败:', err);
+        toast('❌ 图片处理失败');
+      }
+    }
+
+    saveState();
+    // Re-render the appropriate view
+    if(currentView === 'notes') renderNotesContent();
+    else if(currentView === 'week') renderWeek();
+    else if(infoDetailModId) { const mod = findMod(infoDetailModId); if(mod) renderInfoDetailPage(mod); }
+    else renderDay();
+
+    toast(`✅ 已添加 ${filesToProcess.length} 张图片`);
+  });
+}
+
+// Delete an image from an info
+function deleteNoteImage(infoId, imgIdx) {
+  const r = findInfo(infoId);
+  if(!r || !r.info.images) return;
+  r.info.images.splice(imgIdx, 1);
+  if(r.info.images.length === 0) delete r.info.images;
+  saveState();
+  if(currentView === 'notes') renderNotesContent();
+  else if(currentView === 'week') renderWeek();
+  else if(infoDetailModId) { const mod = findMod(infoDetailModId); if(mod) renderInfoDetailPage(mod); }
+  else renderDay();
+}
+
+// Open lightbox for image preview
+function openNoteImageLightbox(src) {
+  const overlay = document.createElement('div');
+  overlay.className = 'note-img-lightbox';
+  overlay.innerHTML = `<img src="${src}" alt="预览"><div class="lb-close" onclick="this.parentElement.remove()">✕</div>`;
+  overlay.addEventListener('click', (e) => { if(e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// Generate HTML for note images
+function noteImagesHTML(info) {
+  if(!info.images || !info.images.length) return '';
+  let h = '<div class="note-images">';
+  info.images.forEach((src, i) => {
+    h += `<div class="note-img-thumb" data-info-id="${info.id}" data-img-idx="${i}">`;
+    h += `<img src="${src}" alt="图片${i+1}">`;
+    h += `<button class="note-img-del" title="删除图片">✕</button>`;
+    h += `</div>`;
+  });
+  h += '</div>';
+  return h;
+}
+
+// Delegated click handler for note images (avoids long base64 in onclick attributes)
+document.addEventListener('click', (e) => {
+  const delBtn = e.target.closest('.note-img-del');
+  if(delBtn) {
+    e.stopPropagation();
+    const thumb = delBtn.closest('.note-img-thumb');
+    if(thumb) {
+      deleteNoteImage(thumb.dataset.infoId, parseInt(thumb.dataset.imgIdx));
+    }
+    return;
+  }
+  const thumb = e.target.closest('.note-img-thumb');
+  if(thumb) {
+    const img = thumb.querySelector('img');
+    if(img) openNoteImageLightbox(img.src);
+  }
+});
 
 // --- Day Nav ---
 function navDay(dir) { if(dir===0) dayOffset=0; else dayOffset+=dir; renderDay(); }
@@ -5138,6 +5411,7 @@ async function delTodoFromSlot(todoId, slotKey, dateStr) {
   try {
     const ok = await showConfirm('确定要删除这条待办吗？');
     if(!ok) return;
+    _deletedIds.add(todoId);
     // Remove from slot
     const slots = getTimeSlots(dateStr);
     if(slots[slotKey]) {
@@ -5829,6 +6103,13 @@ window.addEventListener('offline', () => {
 // ================================================================
 window.addEventListener('beforeunload', () => {
   if(!_cloudAvailable || !_userHasEdited) return;
+  // Safety check: don't push if local item count is significantly less than last known cloud count
+  // This prevents corrupted/incomplete memory state from overwriting good cloud data
+  const localCount = _countItems(MODULES);
+  if(_lastKnownCloudCount > 0 && localCount < _lastKnownCloudCount - 3) {
+    console.warn(`🛡️ beforeunload BLOCKED: local(${localCount}) << cloud(${_lastKnownCloudCount}). Skipping keepalive push.`);
+    return;
+  }
   // Use fetch with keepalive for reliable delivery during page close
   const payload = JSON.stringify({
     id: getDataRowId(),
@@ -6427,6 +6708,7 @@ document.addEventListener('DOMContentLoaded', () => {
   restoreAiConfig();
   initAiImageDragDrop();
   initAiPasteHandler();
+  initNoteImagePaste();
 });
 
 // --- PWA: Register Service Worker (自动更新) ---
