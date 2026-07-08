@@ -255,6 +255,7 @@
     width: 100%;
     min-height: 24px;
     box-sizing: border-box;
+    field-sizing: content;
   }
   .info-note-area:focus {
     background: rgba(175,82,222,0.04);
@@ -453,6 +454,7 @@
     border-radius: 8px; padding: 4px 8px; margin: -4px -8px;
     transition: background .2s var(--trans-smooth), box-shadow .2s var(--trans-smooth);
     width: 100%; min-height: 24px; box-sizing: border-box;
+    field-sizing: content;
   }
   .info-wk-body .info-row .i-text:focus {
     background: rgba(175,82,222,0.04);
@@ -3194,11 +3196,13 @@ function autoResizeTextarea(el) {
   el.style.overflow = 'hidden';
 }
 
-// 页面渲染后批量初始化所有 textarea 高度（用 rAF 避免阻塞滚动）
+// 页面渲染后批量初始化所有 textarea 高度（双重 rAF 确保布局完成）
 function initAllTextareas() {
   requestAnimationFrame(() => {
-    const els = document.querySelectorAll('.info-note-area, .i-text-area');
-    els.forEach(el => autoResizeTextarea(el));
+    requestAnimationFrame(() => {
+      const els = document.querySelectorAll('.info-note-area, .i-text-area');
+      els.forEach(el => autoResizeTextarea(el));
+    });
   });
 }
 
@@ -3631,7 +3635,7 @@ function renderWeek() {
 
   h += '</div>';
   c.innerHTML = h;
-  setTimeout(initAllTextareas, 10);
+  initAllTextareas();
 }
 
 function todoRowHTML(t, weekDates, todayStr, context, hiddenSlotIds, slotLabel) {
@@ -4110,7 +4114,7 @@ function renderNotesContent() {
   });
 
   nc.innerHTML = h;
-  setTimeout(initAllTextareas, 10);
+  initAllTextareas();
 }
 
 function notesInfoRowHTML(info, modId) {
@@ -4260,7 +4264,7 @@ function renderInfoDetailPage(mod) {
   });
 
   c.innerHTML = h;
-  setTimeout(initAllTextareas, 10);
+  initAllTextareas();
 }
 
 function editInfoInDetail(id, text) {

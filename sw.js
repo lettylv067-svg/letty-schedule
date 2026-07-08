@@ -1,6 +1,6 @@
 // Service Worker for Letty 日程管理 PWA
 // ⚠️ 每次部署时更新此版本号，浏览器会自动检测 SW 文件变化并触发更新
-const CACHE_VERSION = '20260708-2241';
+const CACHE_VERSION = '20260708-2318';
 const CACHE_NAME = `letty-schedule-${CACHE_VERSION}`;
 const ASSETS_TO_CACHE = [
   '/letty-schedule/',
