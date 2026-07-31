@@ -4701,7 +4701,7 @@ function initNoteImagePaste() {
     }
     if(!imageFiles.length) return; // No image — let normal paste proceed
 
-    e.preventDefault(); // Prevent pasting image data as text
+    e.preventDefault(); // Prevent default paste — we handle text + images manually
 
     // Find the info ID from the closest data-id ancestor
     const row = target.closest('[data-id]');
@@ -4710,6 +4710,39 @@ function initNoteImagePaste() {
     const r = findInfo(infoId);
     if(!r) return;
 
+    // Step 1: Extract and insert text content from clipboard
+    const pasteText = e.clipboardData.getData('text/plain');
+    if(pasteText) {
+      // Save current textarea value to data model first (catch unsaved edits)
+      r.info.text = target.value.trim();
+
+      // Insert pasted text at cursor position
+      const start = target.selectionStart;
+      const end = target.selectionEnd;
+      const before = target.value.substring(0, start);
+      const after = target.value.substring(end);
+      target.value = before + pasteText + after;
+
+      // Update data model with new text
+      r.info.text = target.value.trim();
+
+      // Move cursor after pasted text
+      const newCursor = start + pasteText.length;
+      target.setSelectionRange(newCursor, newCursor);
+      autoResizeTextarea(target);
+    }
+
+    // Step 2: Process image files (skip if no images)
+    if(!imageFiles.length) {
+      // Text-only paste — already handled above, just save and refresh
+      saveState();
+      if(currentView === 'notes') renderNotesContent();
+      else if(currentView === 'week') renderWeek();
+      else if(infoDetailModId) { const mod = findMod(infoDetailModId); if(mod) renderInfoDetailPage(mod); }
+      else renderDay();
+      return;
+    }
+
     // Initialize images array if needed
     if(!r.info.images) r.info.images = [];
 
@@ -4717,10 +4750,16 @@ function initNoteImagePaste() {
     const remaining = 5 - r.info.images.length;
     if(remaining <= 0) {
       toast('⚠️ 每条笔记最多 5 张图片');
+      saveState();
+      if(currentView === 'notes') renderNotesContent();
+      else if(currentView === 'week') renderWeek();
+      else if(infoDetailModId) { const mod = findMod(infoDetailModId); if(mod) renderInfoDetailPage(mod); }
+      else renderDay();
       return;
     }
 
     const filesToProcess = imageFiles.slice(0, remaining);
+    const hadText = !!pasteText;
     toast(`📷 正在处理 ${filesToProcess.length} 张图片…`);
 
     for(const file of filesToProcess) {
@@ -4740,7 +4779,10 @@ function initNoteImagePaste() {
     else if(infoDetailModId) { const mod = findMod(infoDetailModId); if(mod) renderInfoDetailPage(mod); }
     else renderDay();
 
-    toast(`✅ 已添加 ${filesToProcess.length} 张图片`);
+    const msg = hadText
+      ? `✅ 已添加文本和 ${filesToProcess.length} 张图片`
+      : `✅ 已添加 ${filesToProcess.length} 张图片`;
+    toast(msg);
   });
 }
 
