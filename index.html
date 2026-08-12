@@ -2195,12 +2195,12 @@ async function handleRegister() {
 // Logout handler
 function handleLogout(e) {
   if(e) e.stopPropagation();
+  resetSyncState();
   clearSession();
   _currentUser = null;
   // Reset app state
   MODULES = JSON.parse(JSON.stringify(DEFAULT_MODULES));
   _cloudReady = false;
-  _userHasEdited = false;
   // Show login
   document.getElementById('userMenu').classList.remove('show');
   showAuthOverlay();
@@ -2263,9 +2263,51 @@ let _pendingSync = false;      // True when local has unsynced changes (offline 
 let _localUpdatedAt = null;    // ISO timestamp of last known state — used for version comparison
 let _cloudSyncTimer = null;    // Debounce timer for cloud push
 let _isSyncing = false;        // Prevent concurrent sync operations
+let _syncPromise = null;       // Single-flight sync queue
+let _editGeneration = 0;       // Incremented for every local edit
+let _syncedGeneration = 0;     // Latest generation confirmed by cloud
+let _dataSessionId = 0;        // Prevent async work from crossing accounts
 let _pullInProgress = false;   // Prevent concurrent pull operations
 let _deletedIds = new Set();   // Track user-initiated deletions this session (cleared after successful push)
 let _lastKnownCloudCount = 0;  // Total info+todo count from last known cloud state
+let TIME_SLOTS = {};           // In-memory source of truth; localStorage is only a cache
+let _localCacheAvailable = true;
+let _versionNeedsRetry = false;
+let _lastConfirmedForVersion = null;
+
+function safeLocalSet(key, value, label) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch(e) {
+    _localCacheAvailable = false;
+    console.warn(`Local cache write failed (${label || key}):`, e);
+    return false;
+  }
+}
+
+function markDirty() {
+  _editGeneration++;
+  _pendingSync = true;
+  _userHasEdited = true;
+  return _editGeneration;
+}
+
+function resetSyncState() {
+  _dataSessionId++;
+  if(_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
+  _cloudSyncTimer = null;
+  _syncPromise = null;
+  _isSyncing = false;
+  _pendingSync = false;
+  _userHasEdited = false;
+  _editGeneration = 0;
+  _syncedGeneration = 0;
+  _deletedIds = new Set();
+  TIME_SLOTS = {};
+  _versionNeedsRetry = false;
+  _lastConfirmedForVersion = null;
+}
 
 // --- Sync status UI ---
 let _lastSyncStatus = 'init';
@@ -2318,60 +2360,94 @@ function scheduleCloudSync() {
 }
 
 async function pushToCloud() {
+  if(_isPreviewingVersion) {
+    _pendingSync = _editGeneration > _syncedGeneration;
+    return false;
+  }
   if(!_cloudAvailable || !_supabaseClient) {
     _pendingSync = true;
     showSyncStatus('offline');
-    return;
+    return false;
   }
-  if(_isSyncing) {
-    // Already syncing, schedule another round
-    _pendingSync = true;
-    return;
-  }
-  _isSyncing = true;
-  try {
-    showSyncStatus('saving');
+  if(_syncPromise) return _syncPromise;
 
-    // ---- MERGE-BEFORE-PUSH: prevent accidental data loss ----
-    await _mergeBeforePush();
+  const sessionId = _dataSessionId;
+  const rowId = getDataRowId();
+  const storeKey = getStoreKey();
+  _syncPromise = (async () => {
+    _isSyncing = true;
+    let lastConfirmed = null;
+    let syncFailed = false;
+    try {
+      while(sessionId === _dataSessionId && _syncedGeneration < _editGeneration) {
+        showSyncStatus('saving');
 
-    const now = new Date().toISOString();
-    _localUpdatedAt = now;
-    const payload = {
-      id: getDataRowId(),
-      modules: MODULES,
-      time_slots: JSON.parse(localStorage.getItem(getSlotKey()) || '{}'),
-      updated_at: now
-    };
-    const { error } = await _supabaseClient
-      .from('schedule_data')
-      .upsert(payload, { onConflict: 'id' });
-    if(error) throw error;
-    _pendingSync = false;
-    _deletedIds.clear(); // Deletions synced — reset tracking
-    // Update cloud item count for beforeunload safety check
-    _lastKnownCloudCount = _countItems(MODULES);
-    // Update localStorage cache
-    localStorage.setItem(getStoreKey(), JSON.stringify({
-      modules: MODULES, updated_at: now
-    }));
-    showSyncStatus('saved');
-    console.log(`☁️ Pushed to cloud. updated_at=${now}`);
-    // Auto-save version snapshot (debounced — skip if last snapshot was <30s ago)
-    if(!_isPreviewingVersion) {
-      const lastVer = _versions[0];
-      const shouldSave = !lastVer || (Date.now() - new Date(lastVer.timestamp).getTime() > 30000);
-      if(shouldSave) {
-        saveVersionSnapshot().catch(e => console.warn('Version save failed:', e));
+        // A failed merge must stop the write; otherwise an old full document could
+        // overwrite a newer cloud document.
+        await _mergeBeforePush(rowId);
+        if(sessionId !== _dataSessionId) return false;
+
+        const targetGeneration = _editGeneration;
+        const deletedBatch = new Set(_deletedIds);
+        const modulesSnapshot = JSON.parse(JSON.stringify(MODULES));
+        const slotsSnapshot = JSON.parse(JSON.stringify(TIME_SLOTS));
+        const now = new Date().toISOString();
+        const payload = {
+          id: rowId,
+          modules: modulesSnapshot,
+          time_slots: slotsSnapshot,
+          updated_at: now
+        };
+        const { error } = await _supabaseClient
+          .from('schedule_data')
+          .upsert(payload, { onConflict: 'id' });
+        if(error) throw error;
+        if(sessionId !== _dataSessionId) return false;
+
+        _syncedGeneration = Math.max(_syncedGeneration, targetGeneration);
+        deletedBatch.forEach(id => _deletedIds.delete(id));
+        _localUpdatedAt = now;
+        _lastKnownCloudCount = _countItems(modulesSnapshot);
+        safeLocalSet(storeKey, JSON.stringify({ modules: modulesSnapshot, updated_at: now }), 'main data');
+        lastConfirmed = { modules: modulesSnapshot, timeSlots: slotsSnapshot };
+        _lastConfirmedForVersion = lastConfirmed;
+        console.log(`☁️ Pushed generation ${targetGeneration} to cloud. updated_at=${now}`);
+      }
+
+      if(sessionId !== _dataSessionId) return false;
+      _pendingSync = _syncedGeneration < _editGeneration;
+      if(!_pendingSync) {
+        _userHasEdited = false;
+        showSyncStatus('saved');
+        const versionPayload = lastConfirmed || (_versionNeedsRetry ? _lastConfirmedForVersion : null);
+        if(versionPayload) {
+          try {
+            await saveVersionSnapshot(versionPayload.modules, versionPayload.timeSlots);
+            _versionNeedsRetry = false;
+          } catch(versionError) {
+            _versionNeedsRetry = true;
+            console.warn('Version save failed:', versionError);
+            showSyncStatus('error');
+            return false;
+          }
+        }
+      }
+      return !_pendingSync;
+    } catch(e) {
+      syncFailed = true;
+      console.error('Cloud push failed:', e);
+      _pendingSync = _syncedGeneration < _editGeneration;
+      showSyncStatus('error');
+      return false;
+    } finally {
+      _isSyncing = false;
+      _syncPromise = null;
+      if(!syncFailed && sessionId === _dataSessionId && _syncedGeneration < _editGeneration && navigator.onLine) {
+        scheduleCloudSync();
       }
     }
-  } catch(e) {
-    console.error('Cloud push failed:', e);
-    _pendingSync = true;
-    showSyncStatus('error');
-  } finally {
-    _isSyncing = false;
-  }
+  })();
+  return _syncPromise;
 }
 
 // Count total info+todo items across all modules
@@ -2384,14 +2460,17 @@ function _countItems(modules) {
 }
 
 // Merge cloud data into local MODULES before pushing — ensures no accidental loss
-async function _mergeBeforePush() {
-  try {
+async function _mergeBeforePush(rowId) {
     const { data, error } = await _supabaseClient
       .from('schedule_data')
       .select('modules')
-      .eq('id', getDataRowId())
+      .eq('id', rowId)
       .single();
-    if(error || !data || !data.modules) return; // No cloud data yet — skip merge
+    if(error) {
+      if(error.code === 'PGRST116') return; // First write for this account
+      throw error;
+    }
+    if(!data || !data.modules) return;
 
     const cloudModules = data.modules;
     // Build set of all local IDs (info + todo)
@@ -2404,8 +2483,8 @@ async function _mergeBeforePush() {
 
     let recovered = 0;
     cloudModules.forEach(cloudMod => {
-      // Find matching local module by name
-      const localMod = MODULES.find(m => m.name === cloudMod.name);
+      // Prefer stable module id; name is legacy compatibility only.
+      const localMod = MODULES.find(m => m.id === cloudMod.id) || MODULES.find(m => m.name === cloudMod.name);
       if(!localMod) return;
 
       // Recover missing infos (not in local AND not deliberately deleted)
@@ -2430,10 +2509,6 @@ async function _mergeBeforePush() {
     if(recovered > 0) {
       console.log(`🛡️ Merge-before-push: recovered ${recovered} item(s) from cloud`);
     }
-  } catch(e) {
-    // Merge failed — proceed with push anyway (best-effort protection)
-    console.warn('Merge-before-push failed (non-fatal):', e);
-  }
 }
 
 // ================================================================
@@ -2474,14 +2549,13 @@ async function pullFromCloud(opts = {}) {
       // On page load, always adopt cloud data (cloud is source of truth)
       console.log('☁️ INIT: adopting cloud data');
       MODULES = data.modules;
+      TIME_SLOTS = data.time_slots || {};
       _localUpdatedAt = data.updated_at;
       _lastKnownCloudCount = _countItems(MODULES);
-      localStorage.setItem(getStoreKey(), JSON.stringify({
+      safeLocalSet(getStoreKey(), JSON.stringify({
         modules: MODULES, updated_at: data.updated_at
-      }));
-      if(data.time_slots) {
-        localStorage.setItem(getSlotKey(), JSON.stringify(data.time_slots));
-      }
+      }), 'main data');
+      safeLocalSet(getSlotKey(), JSON.stringify(TIME_SLOTS), 'time slots');
       return { ok: true, updated: true };
     }
     // Non-init: compare timestamps
@@ -2489,14 +2563,13 @@ async function pullFromCloud(opts = {}) {
       // Cloud is newer — adopt it (another window pushed newer data)
       console.log(`☁️ Cloud is newer, adopting cloud data`);
       MODULES = data.modules;
+      TIME_SLOTS = data.time_slots || {};
       _localUpdatedAt = data.updated_at;
       _lastKnownCloudCount = _countItems(MODULES);
-      localStorage.setItem(getStoreKey(), JSON.stringify({
+      safeLocalSet(getStoreKey(), JSON.stringify({
         modules: MODULES, updated_at: data.updated_at
-      }));
-      if(data.time_slots) {
-        localStorage.setItem(getSlotKey(), JSON.stringify(data.time_slots));
-      }
+      }), 'main data');
+      safeLocalSet(getSlotKey(), JSON.stringify(TIME_SLOTS), 'time slots');
       if(!silent) showSyncStatus('conflict');
       return { ok: true, updated: true };
     } else {
@@ -2527,6 +2600,7 @@ function loadState() {
     const saved = JSON.parse(raw);
     if (saved.modules) MODULES = saved.modules;
     if (saved.updated_at) _localUpdatedAt = saved.updated_at;
+    try { TIME_SLOTS = JSON.parse(localStorage.getItem(getSlotKey()) || '{}'); } catch(e) { TIME_SLOTS = {}; }
     restoreUidCounter();
     return true;
   } catch(e) { return false; }
@@ -2553,14 +2627,19 @@ function saveState() {
     toast('⚠️ 预览模式下无法编辑，请先退出预览');
     return;
   }
-  // 1. Instantly save to localStorage (never blocks UI)
+  // Mark dirty before touching the cache. A full localStorage must never block
+  // the cloud save queue.
   const now = new Date().toISOString();
-  localStorage.setItem(getStoreKey(), JSON.stringify({
+  markDirty();
+  const cached = safeLocalSet(getStoreKey(), JSON.stringify({
     modules: MODULES, updated_at: now
-  }));
+  }), 'main data');
   _localUpdatedAt = now;
-  _userHasEdited = true;
-  // 2. Schedule debounced cloud push
+  if(!cached && !_cloudAvailable) {
+    showSyncStatus('error');
+    toast('⚠️ 浏览器空间已满，且当前离线；请联网后重试');
+  }
+  // Schedule debounced cloud push
   if(_cloudReady) {
     scheduleCloudSync();
   } else {
@@ -2579,46 +2658,53 @@ let _selectedVersionIdx = -1;    // Currently selected version in panel
 let _isPreviewingVersion = false;
 let _previewBackup = null;       // Backup of real data while previewing
 
-// --- Save a version snapshot (called after each successful cloud push) ---
-async function saveVersionSnapshot() {
+function modulesHaveInlineImages(modules) {
+  return (modules || []).some(m => (m.infos || []).some(i =>
+    (i.images || []).some(img => typeof img === 'string' && img.startsWith('data:image/'))
+  ));
+}
+
+// --- Save a version snapshot from the exact payload confirmed by cloud ---
+async function saveVersionSnapshot(confirmedModules, confirmedTimeSlots) {
   const snapshot = {
     id: 'v_' + Date.now(),
     timestamp: new Date().toISOString(),
-    modules: JSON.parse(JSON.stringify(MODULES)),
-    timeSlots: JSON.parse(localStorage.getItem(getSlotKey()) || '{}'),
-    summary: generateVersionSummary()
+    modules: JSON.parse(JSON.stringify(confirmedModules || MODULES)),
+    timeSlots: JSON.parse(JSON.stringify(confirmedTimeSlots || TIME_SLOTS)),
+    summary: generateVersionSummary(confirmedModules || MODULES)
   };
 
-  // Add to front, limit to MAX_VERSIONS
-  _versions.unshift(snapshot);
-  if(_versions.length > MAX_VERSIONS) {
-    _versions = _versions.slice(0, MAX_VERSIONS);
+  // Within 30 seconds replace the latest snapshot so the trailing edit is not lost.
+  const nextVersions = JSON.parse(JSON.stringify(_versions || []));
+  const lastVer = nextVersions[0];
+  if(lastVer && Date.now() - new Date(lastVer.timestamp).getTime() <= 30000) {
+    nextVersions[0] = snapshot;
+  } else {
+    nextVersions.unshift(snapshot);
   }
+  if(nextVersions.length > MAX_VERSIONS) nextVersions.length = MAX_VERSIONS;
 
-  // Save to localStorage
-  localStorage.setItem(getVersionKey(), JSON.stringify(_versions));
-
-  // Push to cloud (separate row)
+  // Cloud first: local cache failures must not block version persistence.
   if(_cloudAvailable && _supabaseClient) {
-    try {
-      await _supabaseClient
-        .from('schedule_data')
-        .upsert({
-          id: getVersionRowId(),
-          modules: _versions, // reuse modules column to store versions array
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-      console.log('📸 Version snapshot saved to cloud');
-    } catch(e) {
-      console.warn('Version cloud save failed:', e);
-    }
+    const { error } = await _supabaseClient
+      .from('schedule_data')
+      .upsert({
+        id: getVersionRowId(),
+        modules: nextVersions,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+    if(error) throw error;
   }
+
+  _versions = nextVersions;
+  safeLocalSet(getVersionKey(), JSON.stringify(_versions), 'version history');
+  console.log('📸 Version snapshot saved to cloud');
 }
 
 // Generate a brief summary for the version
-function generateVersionSummary() {
+function generateVersionSummary(modules) {
   let totalTodos = 0, doneTodos = 0, totalInfos = 0;
-  MODULES.forEach(m => {
+  (modules || MODULES).forEach(m => {
     totalTodos += m.todos.length;
     doneTodos += m.todos.filter(t => t.status === 'done').length;
     totalInfos += (m.infos || []).length;
@@ -2638,7 +2724,10 @@ async function loadVersions() {
         .single();
       if(!error && data && data.modules && Array.isArray(data.modules)) {
         _versions = data.modules;
-        localStorage.setItem(getVersionKey(), JSON.stringify(_versions));
+        // Legacy versions may contain megabytes of repeated base64 images. Do
+        // not refill localStorage before migration has converted them to refs.
+        const hasInline = _versions.some(v => modulesHaveInlineImages(v.modules));
+        if(!hasInline) safeLocalSet(getVersionKey(), JSON.stringify(_versions), 'version history');
         console.log(`📸 Loaded ${_versions.length} versions from cloud`);
         return;
       }
@@ -2833,7 +2922,8 @@ function computeVersionDiff(currentModules, oldModules) {
     } else {
       const oldI = oldInfoMap[iId].info;
       const curI = curInfoMap[iId].info;
-      if(oldI.text !== curI.text || oldI.highlighted !== curI.highlighted) {
+      if(oldI.text !== curI.text || oldI.highlighted !== curI.highlighted ||
+         JSON.stringify(oldI.images || []) !== JSON.stringify(curI.images || [])) {
         diff.infos[iId] = 'changed';
       }
     }
@@ -2933,15 +3023,26 @@ function getDiffSummary() {
 }
 
 // --- Preview a version (read-only, non-destructive) ---
-function previewSelectedVersion() {
+async function previewSelectedVersion() {
   if(_selectedVersionIdx < 0) return;
   const ver = _versions[_selectedVersionIdx];
   if(!ver) return;
 
+  // Never let a pending debounce upload the temporary preview document.
+  if(_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
+  _cloudSyncTimer = null;
+  if(_pendingSync) {
+    const flushed = await pushToCloud();
+    if(!flushed) {
+      toast('⚠️ 请先完成当前数据同步后再预览历史');
+      return;
+    }
+  }
+
   // Backup current real data
   _previewBackup = {
     modules: JSON.parse(JSON.stringify(MODULES)),
-    timeSlots: localStorage.getItem(getSlotKey()),
+    timeSlots: JSON.parse(JSON.stringify(TIME_SLOTS)),
     localUpdatedAt: _localUpdatedAt,
     versionIdx: _selectedVersionIdx
   };
@@ -2958,7 +3059,7 @@ function previewSelectedVersion() {
   injectGhostItems(currentMods, MODULES);
 
   if(ver.timeSlots) {
-    localStorage.setItem(getSlotKey(), JSON.stringify(ver.timeSlots));
+    TIME_SLOTS = JSON.parse(JSON.stringify(ver.timeSlots));
   }
 
   _isPreviewingVersion = true;
@@ -2996,9 +3097,7 @@ function exitVersionPreview() {
 
   // Restore real data
   MODULES = _previewBackup.modules;
-  if(_previewBackup.timeSlots !== null) {
-    localStorage.setItem(getSlotKey(), _previewBackup.timeSlots);
-  }
+  TIME_SLOTS = JSON.parse(JSON.stringify(_previewBackup.timeSlots || {}));
   _localUpdatedAt = _previewBackup.localUpdatedAt;
 
   _isPreviewingVersion = false;
@@ -3041,6 +3140,7 @@ function restoreFromPreview() {
   restoreUidCounter();
   normalizeInfoWeeks(); normalizeTodoWeeks();
   deduplicateTodos();
+  safeLocalSet(getSlotKey(), JSON.stringify(TIME_SLOTS), 'time slots');
   saveState();
   if(currentView === 'week') renderWeek(); else renderDay();
   toast('✅ 已恢复到历史版本');
@@ -3058,7 +3158,8 @@ async function restoreSelectedVersion() {
   // Apply version data
   MODULES = JSON.parse(JSON.stringify(ver.modules));
   if(ver.timeSlots) {
-    localStorage.setItem(getSlotKey(), JSON.stringify(ver.timeSlots));
+    TIME_SLOTS = JSON.parse(JSON.stringify(ver.timeSlots));
+    safeLocalSet(getSlotKey(), JSON.stringify(TIME_SLOTS), 'time slots');
   }
 
   // Close panel
@@ -3078,13 +3179,29 @@ async function restoreSelectedVersion() {
 // ================================================================
 // DATA EXPORT / IMPORT (backup & restore)
 // ================================================================
-function exportData() {
+async function exportData() {
+  const refs = new Map();
+  MODULES.forEach(m => (m.infos || []).forEach(i => (i.images || []).forEach(img => {
+    if(img && typeof img === 'object' && img.kind === NOTE_IMAGE_KIND) refs.set(img.rowId, img);
+  })));
+  const imageAssets = [];
+  try {
+    for(const ref of refs.values()) {
+      const { asset } = await fetchImageAsset(ref);
+      imageAssets.push({ rowId: ref.rowId, asset });
+    }
+  } catch(e) {
+    toast('❌ 图片备份读取失败，未导出不完整备份');
+    console.error('Export image fetch failed:', e);
+    return;
+  }
   const data = {
     _format: 'letty_schedule_backup',
-    _version: 3,
+    _version: 4,
     _exportedAt: new Date().toISOString(),
     modules: MODULES,
-    timeSlots: JSON.parse(localStorage.getItem(getSlotKey()) || '{}')
+    timeSlots: TIME_SLOTS,
+    imageAssets
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -3103,7 +3220,7 @@ function importData(evt) {
   const file = evt.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     try {
       const data = JSON.parse(e.target.result);
       if (data._format !== 'letty_schedule_backup') {
@@ -3111,13 +3228,20 @@ function importData(evt) {
       }
       // Confirm before overwriting
       if (!confirm('导入将覆盖当前所有数据，确定继续？\n\n建议先导出当前数据作为备份。')) return;
-      if (data.modules) {
-        MODULES = data.modules;
-        saveState();
+      // Restore original image rows before making their references live.
+      for(const entry of (data.imageAssets || [])) {
+        if(!entry.rowId || !entry.asset) throw new Error('图片备份格式不完整');
+        const { error } = await _supabaseClient.from('schedule_data').upsert({
+          id: entry.rowId,
+          modules: [entry.asset],
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+        if(error) throw error;
       }
-      if (data.timeSlots) {
-        localStorage.setItem(getSlotKey(), JSON.stringify(data.timeSlots));
-      }
+      if (data.modules) MODULES = data.modules;
+      if (data.timeSlots) TIME_SLOTS = data.timeSlots;
+      safeLocalSet(getSlotKey(), JSON.stringify(TIME_SLOTS), 'time slots');
+      saveState();
       // Restore _uid counter
       let maxId = _uid;
       MODULES.forEach(m => {
@@ -4655,16 +4779,236 @@ async function delInfo(id) {
 }
 
 // ================================================================
-// NOTE IMAGE PASTE — compress & store as base64 in info.images[]
+// NOTE IMAGE STORAGE — original bytes in one cloud row per image.
+// Main data and version history keep only small immutable references.
 // ================================================================
+const NOTE_IMAGE_KIND = 'note_image_v1';
+const MAX_NOTE_IMAGE_BYTES = 20 * 1024 * 1024;
+const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+const _imageObjectUrls = new Map();
+const _imageLoadPromises = new Map();
+let _legacyImageMigrationInProgress = false;
 
-// Compress image via canvas: max 1600px long side, quality 0.85 → REMOVED: read original file as-is
-function compressNoteImage(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunk = 0x8000;
+  for(let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function sha256Bytes(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function getImageRowId(hash) {
+  const owner = _currentUser ? _currentUser.username : 'letty';
+  return `${owner}_image_${hash}`;
+}
+
+async function buildImageAsset(bytes, mime, name) {
+  const hash = await sha256Bytes(bytes);
+  const ref = {
+    kind: NOTE_IMAGE_KIND,
+    rowId: getImageRowId(hash),
+    sha256: hash,
+    mime: mime || 'application/octet-stream',
+    size: bytes.byteLength,
+    name: name || 'image'
+  };
+  const asset = {
+    _type: NOTE_IMAGE_KIND,
+    sha256: hash,
+    mime: ref.mime,
+    size: ref.size,
+    name: ref.name,
+    body: bytesToBase64(bytes)
+  };
+  return { ref, asset };
+}
+
+async function uploadImageAsset(ref, asset) {
+  if(!_cloudAvailable || !_supabaseClient || !navigator.onLine) {
+    throw new Error('当前离线，请联网后再添加图片');
+  }
+  const { error } = await _supabaseClient.from('schedule_data').upsert({
+    id: ref.rowId,
+    modules: [asset],
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'id' });
+  if(error) throw error;
+  return ref;
+}
+
+async function uploadOriginalImage(file) {
+  if(file.size > MAX_NOTE_IMAGE_BYTES) {
+    throw new Error('单张图片超过 20MB，未上传（不会为了上传而压缩）');
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const { ref, asset } = await buildImageAsset(bytes, file.type, file.name);
+  await uploadImageAsset(ref, asset);
+  return ref;
+}
+
+async function fetchImageAsset(ref) {
+  if(!ref || ref.kind !== NOTE_IMAGE_KIND || !ref.rowId) throw new Error('图片引用无效');
+  const { data, error } = await _supabaseClient.from('schedule_data')
+    .select('modules').eq('id', ref.rowId).single();
+  if(error) throw error;
+  const asset = data && data.modules && data.modules[0];
+  if(!asset || asset._type !== NOTE_IMAGE_KIND || !asset.body) throw new Error('图片数据不完整');
+  const bytes = base64ToBytes(asset.body);
+  if(ref.size && bytes.byteLength !== ref.size) throw new Error('图片字节数校验失败');
+  const hash = await sha256Bytes(bytes);
+  if(ref.sha256 && hash !== ref.sha256) throw new Error('图片内容校验失败');
+  return { asset, bytes };
+}
+
+async function loadImageObjectUrl(ref) {
+  if(_imageObjectUrls.has(ref.rowId)) return _imageObjectUrls.get(ref.rowId);
+  if(_imageLoadPromises.has(ref.rowId)) return _imageLoadPromises.get(ref.rowId);
+  const promise = fetchImageAsset(ref).then(({ asset, bytes }) => {
+    const url = URL.createObjectURL(new Blob([bytes], { type: asset.mime || ref.mime }));
+    _imageObjectUrls.set(ref.rowId, url);
+    _imageLoadPromises.delete(ref.rowId);
+    return url;
+  }).catch(e => {
+    _imageLoadPromises.delete(ref.rowId);
+    throw e;
+  });
+  _imageLoadPromises.set(ref.rowId, promise);
+  return promise;
+}
+
+function parseLegacyImageDataUrl(dataUrl) {
+  const match = /^data:([^;,]+);base64,([\s\S]+)$/.exec(dataUrl || '');
+  if(!match) throw new Error('旧图片数据格式无效');
+  return { mime: match[1], bytes: base64ToBytes(match[2]) };
+}
+
+function replaceLegacyImagesInModules(modules, refsBySource) {
+  (modules || []).forEach(m => (m.infos || []).forEach(info => {
+    if(!info.images) return;
+    info.images = info.images.map(img => {
+      if(typeof img === 'string' && img.startsWith('data:image/')) return refsBySource.get(img) || img;
+      return img;
+    });
+  }));
+  return modules;
+}
+
+async function migrateLegacyImages() {
+  const inlineSources = new Set();
+  const collect = modules => (modules || []).forEach(m => (m.infos || []).forEach(i =>
+    (i.images || []).forEach(img => {
+      if(typeof img === 'string' && img.startsWith('data:image/')) inlineSources.add(img);
+    })
+  ));
+  collect(MODULES);
+  (_versions || []).forEach(v => collect(v.modules));
+  if(!inlineSources.size) return true;
+
+  const sessionId = _dataSessionId;
+  const mainRowId = getDataRowId();
+  const versionRowId = getVersionRowId();
+  const refsBySource = new Map();
+  const refsByHash = new Map();
+  _legacyImageMigrationInProgress = true;
+  showSyncStatus('saving');
+  toast(`🖼️ 正在安全迁移 ${inlineSources.size} 张旧图片…`);
+
+  try {
+    for(const source of inlineSources) {
+      if(sessionId !== _dataSessionId) return false;
+      const parsed = parseLegacyImageDataUrl(source);
+      const built = await buildImageAsset(parsed.bytes, parsed.mime, 'legacy-image');
+      let ref = refsByHash.get(built.ref.sha256);
+      if(!ref) {
+        await uploadImageAsset(built.ref, built.asset);
+        ref = built.ref;
+        refsByHash.set(ref.sha256, ref);
+      }
+      refsBySource.set(source, ref);
+    }
+
+    if(sessionId !== _dataSessionId) return false;
+    const convertedVersions = JSON.parse(JSON.stringify(_versions || []));
+    convertedVersions.forEach(v => replaceLegacyImagesInModules(v.modules, refsBySource));
+    if(convertedVersions.length) {
+      const { error: versionError } = await _supabaseClient.from('schedule_data').upsert({
+        id: versionRowId,
+        modules: convertedVersions,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      if(versionError) throw versionError;
+    }
+
+    // If the user edited while uploads were running, convert and submit the
+    // latest live document rather than the migration's starting snapshot.
+    let convertedMain;
+    while(sessionId === _dataSessionId) {
+      const generation = _editGeneration;
+      convertedMain = JSON.parse(JSON.stringify(MODULES));
+      replaceLegacyImagesInModules(convertedMain, refsBySource);
+      const now = new Date().toISOString();
+      const { error: mainError } = await _supabaseClient.from('schedule_data').upsert({
+        id: mainRowId,
+        modules: convertedMain,
+        time_slots: TIME_SLOTS,
+        updated_at: now
+      }, { onConflict: 'id' });
+      if(mainError) throw mainError;
+      if(generation === _editGeneration) {
+        MODULES = convertedMain;
+        _versions = convertedVersions;
+        _localUpdatedAt = now;
+        _lastKnownCloudCount = _countItems(MODULES);
+        safeLocalSet(getStoreKey(), JSON.stringify({ modules: MODULES, updated_at: now }), 'main data');
+        safeLocalSet(getVersionKey(), JSON.stringify(_versions), 'version history');
+        safeLocalSet(getSlotKey(), JSON.stringify(TIME_SLOTS), 'time slots');
+        showSyncStatus('saved');
+        toast(`✅ ${refsByHash.size} 张原图已安全独立存储`);
+        if(currentView === 'week') renderWeek();
+        else if(currentView === 'notes') renderNotes();
+        else renderDay();
+        return true;
+      }
+    }
+    return false;
+  } catch(e) {
+    console.error('Legacy image migration failed:', e);
+    showSyncStatus('error');
+    toast('⚠️ 旧图片迁移未完成，原数据仍保留，下次会自动重试');
+    return false;
+  } finally {
+    _legacyImageMigrationInProgress = false;
+  }
+}
+
+function hydrateNoteImages() {
+  document.querySelectorAll('img[data-image-row-id]').forEach(img => {
+    const rowId = img.dataset.imageRowId;
+    if(!rowId || img.dataset.loaded === '1') return;
+    const ref = { kind: NOTE_IMAGE_KIND, rowId, sha256: img.dataset.imageSha || '', mime: img.dataset.imageMime || '', size: Number(img.dataset.imageSize || 0) };
+    img.dataset.loaded = 'loading';
+    loadImageObjectUrl(ref).then(url => {
+      document.querySelectorAll(`img[data-image-row-id="${CSS.escape(rowId)}"]`).forEach(el => {
+        el.src = url; el.dataset.loaded = '1'; el.alt = '图片';
+      });
+    }).catch(e => {
+      console.warn('Image load failed:', e);
+      img.dataset.loaded = 'error';
+      img.alt = '图片加载失败';
+    });
   });
 }
 
@@ -4718,14 +5062,10 @@ function initNoteImagePaste() {
       autoResizeTextarea(target);
     }
 
-    // Step 2: Process image files (skip if no images)
-    if(!imageFiles.length) {
-      // Text-only paste — already handled above, just save and refresh
-      saveState();
-      if(currentView === 'notes') renderNotesContent();
-      else if(currentView === 'week') renderWeek();
-      else if(infoDetailModId) { const mod = findMod(infoDetailModId); if(mod) renderInfoDetailPage(mod); }
-      else renderDay();
+    // Save pasted text immediately. Slow/failed image uploads must never delay it.
+    if(pasteText) saveState();
+    if(_legacyImageMigrationInProgress) {
+      toast('⏳ 正在整理旧图片，文字已保存；请稍后再粘贴图片');
       return;
     }
 
@@ -4746,19 +5086,26 @@ function initNoteImagePaste() {
 
     const filesToProcess = imageFiles.slice(0, remaining);
     const hadText = !!pasteText;
-    toast(`📷 正在处理 ${filesToProcess.length} 张图片…`);
+    toast(`📷 正在上传 ${filesToProcess.length} 张原图…`);
 
+    const uploadedRefs = [];
     for(const file of filesToProcess) {
       try {
-        const dataUrl = await compressNoteImage(file);
-        r.info.images.push(dataUrl);
+        uploadedRefs.push(await uploadOriginalImage(file));
       } catch(err) {
-        console.error('图片读取失败:', err);
-        toast('❌ 图片处理失败');
+        console.error('图片上传失败:', err);
+        toast('❌ ' + (err.message || '图片上传失败；文字及其他更新不受影响'));
       }
     }
 
-    saveState();
+    if(uploadedRefs.length) {
+      const latest = findInfo(infoId);
+      if(latest) {
+        if(!latest.info.images) latest.info.images = [];
+        latest.info.images.push(...uploadedRefs);
+        saveState();
+      }
+    }
     // Re-render the appropriate view
     if(currentView === 'notes') renderNotesContent();
     else if(currentView === 'week') renderWeek();
@@ -4766,9 +5113,9 @@ function initNoteImagePaste() {
     else renderDay();
 
     const msg = hadText
-      ? `✅ 已添加文本和 ${filesToProcess.length} 张图片`
-      : `✅ 已添加 ${filesToProcess.length} 张图片`;
-    toast(msg);
+      ? `✅ 文本已保存，${uploadedRefs.length} 张原图已添加`
+      : `✅ 已添加 ${uploadedRefs.length} 张原图`;
+    if(uploadedRefs.length) toast(msg);
   });
 }
 
@@ -4798,13 +5145,21 @@ function openNoteImageLightbox(src) {
 function noteImagesHTML(info) {
   if(!info.images || !info.images.length) return '';
   let h = '<div class="note-images">';
-  info.images.forEach((src, i) => {
+  info.images.forEach((image, i) => {
+    const legacySrc = typeof image === 'string' ? image : '';
+    const ref = image && typeof image === 'object' ? image : null;
+    const src = legacySrc || (ref && _imageObjectUrls.get(ref.rowId)) || TRANSPARENT_PIXEL;
     h += `<div class="note-img-thumb" data-info-id="${info.id}" data-img-idx="${i}">`;
-    h += `<img src="${src}" alt="图片${i+1}">`;
+    if(ref && ref.kind === NOTE_IMAGE_KIND) {
+      h += `<img src="${src}" alt="图片加载中" data-image-row-id="${esc(ref.rowId)}" data-image-sha="${esc(ref.sha256 || '')}" data-image-mime="${esc(ref.mime || '')}" data-image-size="${ref.size || 0}" data-loaded="${_imageObjectUrls.has(ref.rowId) ? '1' : '0'}">`;
+    } else {
+      h += `<img src="${src}" alt="图片${i+1}">`;
+    }
     h += `<button class="note-img-del" title="删除图片">✕</button>`;
     h += `</div>`;
   });
   h += '</div>';
+  setTimeout(hydrateNoteImages, 0);
   return h;
 }
 
@@ -5057,13 +5412,14 @@ document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeDatePi
 // ================================================================
 
 function loadTimeSlots() {
-  try { return JSON.parse(localStorage.getItem(getSlotKey()) || '{}'); } catch(e) { return {}; }
+  return TIME_SLOTS;
 }
 
 function saveTimeSlots(data) {
-  localStorage.setItem(getSlotKey(), JSON.stringify(data));
-  // Schedule cloud sync (will include timeSlots)
-  scheduleCloudSync();
+  TIME_SLOTS = data || {};
+  markDirty();
+  safeLocalSet(getSlotKey(), JSON.stringify(TIME_SLOTS), 'time slots');
+  if(_cloudReady) scheduleCloudSync();
 }
 
 function getTimeSlots(dateStr) {
@@ -5932,10 +6288,10 @@ renderWeek();
 // ================================================================
 async function bootAppData() {
   // Reset state for clean boot
+  resetSyncState();
   MODULES = JSON.parse(JSON.stringify(DEFAULT_MODULES));
   _versions = [];
   _cloudReady = false;
-  _userHasEdited = false;
   _localUpdatedAt = null;
 
   // Always start at current week's week-view (regardless of previous user's state)
@@ -5961,7 +6317,6 @@ async function bootAppData() {
     }
     document.getElementById('weekLabel').textContent = getWeekLabel();
     if(currentView === 'week') renderWeek(); else renderDay();
-    _cloudReady = true;
     showSyncStatus('saved');
     console.log('✅ Cloud data loaded. updated_at=' + _localUpdatedAt);
   } else if(result.ok && !result.updated) {
@@ -5970,7 +6325,6 @@ async function bootAppData() {
       normalizeInfoWeeks(); normalizeTodoWeeks(); deduplicateTodos(); autoDetectAllDates();
       if(currentView === 'week') renderWeek(); else renderDay();
     }
-    _cloudReady = true;
     showSyncStatus('saved');
   } else {
     // Cloud not available — fallback to localStorage (offline mode)
@@ -5979,13 +6333,20 @@ async function bootAppData() {
       if(currentView === 'week') renderWeek(); else renderDay();
       console.log('📴 Using localStorage fallback (offline mode)');
     }
-    _cloudReady = true;
     _pendingSync = _userHasEdited;
     showSyncStatus('offline');
     console.log('⚠️ Cloud load failed, using offline data');
   }
-  // Load version history in background
-  loadVersions().then(() => console.log(`📸 ${_versions.length} version(s) loaded`));
+  // Load history before enabling edits so legacy inline images can be migrated
+  // in one consistent pass across main data and all five snapshots.
+  await loadVersions();
+  if(_cloudAvailable && _supabaseClient) {
+    await migrateLegacyImages();
+  }
+  _cloudReady = true;
+  _pendingSync = _editGeneration > _syncedGeneration;
+  if(_pendingSync) scheduleCloudSync();
+  console.log(`📸 ${_versions.length} version(s) loaded`);
 }
 
 // ================================================================
@@ -6084,8 +6445,13 @@ document.addEventListener('visibilitychange', async () => {
       toast('📅 日期已更新');
     }
 
-    // Tab came back to focus — check cloud for newer data from other windows
+    // Local dirty data must be flushed before any pull can replace it.
     if(!_cloudAvailable || !_supabaseClient || !_cloudReady) return;
+    if(_pendingSync) {
+      await pushToCloud();
+      if(_pendingSync) return;
+    }
+    // Tab came back to focus — check cloud for newer data from other windows
     const result = await pullFromCloud({ silent: true });
     if(result.ok && result.updated) {
       // Cloud has newer data — refresh the page
@@ -6099,13 +6465,10 @@ document.addEventListener('visibilitychange', async () => {
       // Show a subtle toast so user knows data was refreshed
       toast('📥 检测到其他窗口的更新，已自动同步');
       console.log('🔄 Pulled newer data from cloud on tab focus');
-    } else if(_pendingSync && _userHasEdited) {
-      // We have pending local changes — push them now that we're back online
-      await pushToCloud();
     }
   } else {
     // Tab going hidden — push any pending changes
-    if(_cloudAvailable && _userHasEdited && _cloudReady) {
+    if(_cloudAvailable && _pendingSync && _cloudReady && !_isPreviewingVersion) {
       pushToCloud(); // fire-and-forget
     }
   }
@@ -6134,7 +6497,7 @@ window.addEventListener('offline', () => {
 // PAGE CLOSE — last-chance sync via keepalive fetch
 // ================================================================
 window.addEventListener('beforeunload', () => {
-  if(!_cloudAvailable || !_userHasEdited) return;
+  if(!_cloudAvailable || !_pendingSync || _isPreviewingVersion) return;
   // Safety check: don't push if local item count is significantly less than last known cloud count
   // This prevents corrupted/incomplete memory state from overwriting good cloud data
   const localCount = _countItems(MODULES);
@@ -6146,9 +6509,12 @@ window.addEventListener('beforeunload', () => {
   const payload = JSON.stringify({
     id: getDataRowId(),
     modules: MODULES,
-    time_slots: JSON.parse(localStorage.getItem(getSlotKey()) || '{}'),
+    time_slots: TIME_SLOTS,
     updated_at: new Date().toISOString()
   });
+  // Browsers impose a small keepalive budget. Large documents are already
+  // flushed on visibilitychange; attempting them here only creates false hope.
+  if(new TextEncoder().encode(payload).byteLength > 60000) return;
   const url = SUPABASE_URL + '/rest/v1/schedule_data?on_conflict=id';
   try {
     fetch(url, {
@@ -6755,8 +7121,7 @@ if ('serviceWorker' in navigator) {
         if (newWorker) {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
-              console.log('[PWA] New version activated, reloading...');
-              window.location.reload();
+              console.log('[PWA] New version activated');
             }
           });
         }
