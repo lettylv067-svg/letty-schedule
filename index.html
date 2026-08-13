@@ -1768,6 +1768,30 @@ function infoInWeek(info, weekDates) {
   return false;
 }
 
+// Pending items follow their due/original week (with overdue carry-forward).
+// Completed items with completedAt follow the week in which they were completed.
+// Legacy completed items without a valid completedAt retain the old behavior.
+function todoInViewedWeek(todo, weekDates, viewedMonday) {
+  if(todo.status === 'done' && todo.completedAt) {
+    const completed = new Date(todo.completedAt);
+    if(!isNaN(completed.getTime())) {
+      return getMonday(completed).getTime() === viewedMonday.getTime();
+    }
+  }
+
+  if(todo.date) {
+    if(weekDates.includes(todo.date)) return true;
+    if(weekOffset === 0 && todo.status !== 'done') {
+      return dateToObj(todo.date) < viewedMonday;
+    }
+    return false;
+  }
+  if(todo.week) {
+    return getMonday(dateToObj(todo.week)).getTime() === viewedMonday.getTime();
+  }
+  return weekOffset === 0;
+}
+
 // ================================================================
 // TIME AUTO-DETECTION
 // ================================================================
@@ -2902,7 +2926,8 @@ function computeVersionDiff(currentModules, oldModules) {
       // Both exist — check if content or status changed
       const oldT = oldTodoMap[tId].todo;
       const curT = curTodoMap[tId].todo;
-      if(oldT.text !== curT.text || oldT.status !== curT.status || oldT.date !== curT.date || oldT.note !== curT.note) {
+      if(oldT.text !== curT.text || oldT.status !== curT.status || oldT.date !== curT.date ||
+         oldT.note !== curT.note || oldT.completedAt !== curT.completedAt) {
         diff.todos[tId] = 'changed';
       }
     }
@@ -3641,24 +3666,7 @@ function renderWeek() {
 
   MODULES.forEach(mod => {
     const allTodos = mod.todos;
-    const relevantTodos = allTodos.filter(t => {
-      if(t.date) {
-        if(weekDates.includes(t.date)) return true;
-        if(weekOffset === 0 && t.status !== 'done') {
-          const itemDate = dateToObj(t.date);
-          const mon = getCurrentWeekMonday();
-          if(itemDate < mon) return true;
-        }
-        return false;
-      }
-      // No date: check week field; if no week field, default to current week (weekOffset===0)
-      if(t.week) {
-        const todoMon = fmtDate(getMonday(dateToObj(t.week)));
-        const viewMon = fmtDate(getCurrentWeekMonday());
-        return todoMon === viewMon;
-      }
-      return weekOffset === 0;
-    });
+    const relevantTodos = allTodos.filter(t => todoInViewedWeek(t, weekDates, mon));
 
     const notDone = sortTodos(relevantTodos.filter(t=>t.status!=='done'));
     const done = relevantTodos.filter(t=>t.status==='done');
@@ -4482,7 +4490,14 @@ function switchView(v) {
 // --- Todo ---
 function toggleTodo(id,checked) {
   const r=findTodo(id);
-  if(r) r.todo.status=checked?'done':'pending';
+  if(!r) return;
+  if(checked) {
+    r.todo.status = 'done';
+    r.todo.completedAt = new Date().toISOString();
+  } else {
+    r.todo.status = 'pending';
+    delete r.todo.completedAt;
+  }
   saveState();
   toast(checked?'✅ 已完成':'↩️ 已恢复');
   setTimeout(()=>{ renderWeek(); if(currentView==='day') renderDay(); }, 200);
