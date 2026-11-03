@@ -2016,18 +2016,35 @@ async function sha256(str) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Fetch users registry from cloud
+// Race a promise against a timeout (ms). Rejects on timeout.
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error((label || 'request') + ' timeout')), ms))
+  ]);
+}
+
+// Fetch users registry from cloud.
+// Returns { ok, users }: ok=false means the cloud is unreachable (NOT "no users").
 async function fetchUsersRegistry() {
-  if(!_cloudAvailable || !_supabaseClient) return [];
+  if(!_cloudAvailable || !_supabaseClient) return { ok: false, users: [] };
   try {
-    const { data, error } = await _supabaseClient
-      .from('schedule_data')
-      .select('*')
-      .eq('id', USERS_ROW_ID)
-      .single();
-    if(error || !data || !Array.isArray(data.modules)) return [];
-    return data.modules;
-  } catch(e) { return []; }
+    const { data, error } = await withTimeout(
+      _supabaseClient.from('schedule_data').select('*').eq('id', USERS_ROW_ID).single(),
+      8000, 'users registry'
+    );
+    // PGRST116 = row not found: cloud is reachable, registry just does not exist yet
+    if(error) {
+      if(error.code === 'PGRST116') return { ok: true, users: [] };
+      console.warn('fetchUsersRegistry error:', error);
+      return { ok: false, users: [] };
+    }
+    if(!data || !Array.isArray(data.modules)) return { ok: true, users: [] };
+    return { ok: true, users: data.modules };
+  } catch(e) {
+    console.warn('fetchUsersRegistry failed:', e);
+    return { ok: false, users: [] };
+  }
 }
 
 // Save users registry to cloud
@@ -2123,8 +2140,14 @@ async function handleLogin() {
   const btn = document.getElementById('loginBtn');
   btn.disabled = true; btn.textContent = '登录中…';
 
-  const users = await fetchUsersRegistry();
-  const user = users.find(u => u.username === username);
+  const reg = await fetchUsersRegistry();
+  if(!reg.ok) {
+    showAuthError('loginUsernameError', '云端连接失败，请检查网络；若持续失败，可能是 Supabase 项目被暂停，需登录 supabase.com 恢复');
+    btn.disabled = false; btn.textContent = '登 录';
+    return;
+  }
+  // Username matching is case-insensitive; the stored username is authoritative
+  const user = reg.users.find(u => String(u.username).toLowerCase() === username.toLowerCase());
   if(!user) {
     showAuthError('loginUsernameError', '用户不存在');
     btn.disabled = false; btn.textContent = '登 录';
@@ -2170,8 +2193,14 @@ async function handleRegister() {
   const btn = document.getElementById('regBtn');
   btn.disabled = true; btn.textContent = '创建中…';
 
-  const users = await fetchUsersRegistry();
-  if(users.find(u => u.username === username)) {
+  const reg = await fetchUsersRegistry();
+  if(!reg.ok) {
+    showAuthError('regUsernameError', '云端连接失败，请检查网络后重试');
+    btn.disabled = false; btn.textContent = '创建并登录';
+    return;
+  }
+  const users = reg.users;
+  if(users.find(u => String(u.username).toLowerCase() === username.toLowerCase())) {
     showAuthError('regUsernameError', '用户名已被占用');
     btn.disabled = false; btn.textContent = '创建并登录';
     return;
